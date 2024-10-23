@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"strconv"
@@ -53,6 +54,7 @@ type DatadogProvider struct {
 	apiKey         string
 	applicationKey string
 	fromDelta      int64
+	logger         *zap.SugaredLogger
 }
 
 type datadogResponse struct {
@@ -65,7 +67,8 @@ type datadogResponse struct {
 // returns a Datadog client ready to execute queries against the API
 func NewDatadogProvider(metricInterval string,
 	provider flaggerv1.MetricTemplateProvider,
-	credentials map[string][]byte) (*DatadogProvider, error) {
+	credentials map[string][]byte,
+	logger *zap.SugaredLogger) (*DatadogProvider, error) {
 
 	address := provider.Address
 	if address == "" {
@@ -76,6 +79,7 @@ func NewDatadogProvider(metricInterval string,
 		timeout:                  5 * time.Second,
 		metricsQueryEndpoint:     address + datadogMetricsQueryPath,
 		apiKeyValidationEndpoint: address + datadogAPIKeyValidationPath,
+		logger:                   logger,
 	}
 
 	if b, ok := credentials[datadogAPIKeySecretKey]; ok {
@@ -116,21 +120,30 @@ func (p *DatadogProvider) RunQuery(query string) (float64, error) {
 	q.Add("from", strconv.FormatInt(now-p.fromDelta, 10))
 	q.Add("to", strconv.FormatInt(now, 10))
 	req.URL.RawQuery = q.Encode()
-
+	// Log the request details
+	p.logger.Debugf("Request URL: %s", req.URL.String())
+	p.logger.Debugf("Request Headers: %+v", req.Header)
 	ctx, cancel := context.WithTimeout(req.Context(), p.timeout)
 	defer cancel()
 	r, err := http.DefaultClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return 0, fmt.Errorf("request failed: %w", err)
 	}
+	p.logger.Debugf("Response Headers: %+v", r.Header)
 
 	defer r.Body.Close()
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		return 0, fmt.Errorf("error reading body: %w", err)
 	}
+	// Log the response details
+	p.logger.Debugf("Response Status: %s", r.Status)
+	p.logger.Debugf("Response Body: %s", string(b))
 
 	if r.StatusCode != http.StatusOK {
+		if r.StatusCode == http.StatusTooManyRequests {
+			return 0, ErrTooManyRequests
+		}
 		return 0, fmt.Errorf("error response: %s: %w", string(b), err)
 	}
 

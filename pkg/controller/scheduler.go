@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/fluxcd/flagger/pkg/metrics/providers"
 	"strings"
 	"time"
 
@@ -105,6 +107,9 @@ func (c *Controller) scheduleCanaries() {
 		if (exists && job.GetCanaryAnalysisInterval() != cn.GetAnalysisInterval()) || !exists {
 			if exists {
 				job.Stop()
+			} else {
+				// Avoid starting without metrics.
+				c.recorderMetrics(cn.Name, cn.Namespace)
 			}
 
 			newJob := CanaryJob{
@@ -455,7 +460,17 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 			return
 		}
 	} else {
-		if ok := c.runAnalysis(cd); !ok {
+		if ok, err := c.runAnalysis(cd); !ok {
+			//  skip analysis
+			if errors.Is(err, providers.ErrSkipAnalysis) {
+				if skip := c.shouldSkipAnalysis(cd, canaryController, meshRouter, scalerReconciler, err, retriable); skip {
+					return
+				}
+			}
+			//  retriable errors
+			if errors.Is(err, providers.ErrTooManyRequests) {
+				return
+			}
 			if err := canaryController.SetStatusFailedChecks(cd, cd.Status.FailedChecks+1); err != nil {
 				c.recordEventWarningf(cd, "%v", err)
 			}
@@ -752,7 +767,7 @@ func (c *Controller) runBlueGreen(canary *flaggerv1.Canary, canaryController can
 
 }
 
-func (c *Controller) runAnalysis(canary *flaggerv1.Canary) bool {
+func (c *Controller) runAnalysis(canary *flaggerv1.Canary) (bool, error) {
 	// run external checks
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == "" || webhook.Type == flaggerv1.RolloutHook {
@@ -760,22 +775,22 @@ func (c *Controller) runAnalysis(canary *flaggerv1.Canary) bool {
 			if err != nil {
 				c.recordEventWarningf(canary, "Halt %s.%s advancement external check %s failed %v",
 					canary.Name, canary.Namespace, webhook.Name, err)
-				return false
+				return false, err
 			}
 		}
 	}
 
-	ok := c.runBuiltinMetricChecks(canary)
+	//ok := c.runBuiltinMetricChecks(canary)
+	//if !ok {
+	//	return ok
+	//}
+
+	ok, err := c.runMetricChecks(canary)
 	if !ok {
-		return ok
+		return ok, err
 	}
 
-	ok = c.runMetricChecks(canary)
-	if !ok {
-		return ok
-	}
-
-	return true
+	return true, nil
 }
 
 func (c *Controller) shouldSkipAnalysis(canary *flaggerv1.Canary, canaryController canary.Controller, meshRouter router.Interface, scalerReconciler canary.ScalerReconciler, err error, retriable bool) bool {
@@ -791,6 +806,8 @@ func (c *Controller) shouldSkipAnalysis(canary *flaggerv1.Canary, canaryControll
 
 		return true
 	}
+
+	c.recordEventWarningf(canary, "Skipping analysis for %s.%s", canary.Name, canary.Namespace)
 
 	// route all traffic to primary
 	primaryWeight := c.totalWeight(canary)
@@ -1043,4 +1060,43 @@ func (c *Controller) setPhaseInitializing(cd *flaggerv1.Canary) error {
 		return fmt.Errorf("failed after retries: %w", err)
 	}
 	return nil
+}
+
+func (c *Controller) recorderMetrics(name string, namespace string) {
+
+	// check if the canary exists
+	cd, err := c.flaggerClient.FlaggerV1beta1().Canaries(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		c.logger.With("canary", fmt.Sprintf("%s.%s", name, namespace)).
+			Errorf("Canary %s.%s not found", name, namespace)
+		return
+	}
+
+	c.recorder.SetStatus(cd, cd.Status.Phase)
+
+	// override the global provider if one is specified in the canary spec
+	provider := c.meshProvider
+	if cd.Spec.Provider != "" {
+		provider = cd.Spec.Provider
+	}
+
+	// init controller based on target kind
+	canaryController := c.canaryFactory.Controller(cd.Spec.TargetRef.Kind)
+
+	labelSelector, _, _, err := canaryController.GetMetadata(cd)
+	if err != nil {
+		c.recordEventWarningf(cd, "%v", err)
+		return
+	}
+	// init mesh router
+	meshRouter := c.routerFactory.MeshRouter(provider, labelSelector)
+
+	// get the routing settings
+	primaryWeight, canaryWeight, _, err := meshRouter.GetRoutes(cd)
+	if err != nil {
+		c.recordEventWarningf(cd, "%v", err)
+		return
+	}
+
+	c.recorder.SetWeight(cd, primaryWeight, canaryWeight)
 }

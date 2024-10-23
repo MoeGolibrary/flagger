@@ -106,7 +106,8 @@ func TestController_runMetricChecks(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 			Spec:       flaggerv1.CanarySpec{Analysis: analysis},
 		}
-		assert.Equal(t, true, ctrl.runMetricChecks(canary))
+		checks, _ := ctrl.runMetricChecks(canary)
+		assert.Equal(t, true, checks)
 	})
 
 	t.Run("undefined metric", func(t *testing.T) {
@@ -122,7 +123,8 @@ func TestController_runMetricChecks(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 			Spec:       flaggerv1.CanarySpec{Analysis: analysis},
 		}
-		assert.Equal(t, false, ctrl.runMetricChecks(canary))
+		checks, _ := ctrl.runMetricChecks(canary)
+		assert.Equal(t, false, checks)
 	})
 
 	t.Run("builtinMetric", func(t *testing.T) {
@@ -138,7 +140,8 @@ func TestController_runMetricChecks(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 			Spec:       flaggerv1.CanarySpec{Analysis: analysis},
 		}
-		assert.Equal(t, true, ctrl.runMetricChecks(canary))
+		checks, _ := ctrl.runMetricChecks(canary)
+		assert.Equal(t, true, checks)
 	})
 
 	t.Run("no metric Template is defined, but a query is specified", func(t *testing.T) {
@@ -155,7 +158,8 @@ func TestController_runMetricChecks(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 			Spec:       flaggerv1.CanarySpec{Analysis: analysis},
 		}
-		assert.Equal(t, true, ctrl.runMetricChecks(canary))
+		checks, _ := ctrl.runMetricChecks(canary)
+		assert.Equal(t, true, checks)
 	})
 
 	t.Run("both have metric Template and query", func(t *testing.T) {
@@ -180,6 +184,7 @@ func TestController_runMetricChecks(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
 			Spec:       flaggerv1.CanarySpec{Analysis: analysis},
 		}
-		assert.Equal(t, true, ctrl.runMetricChecks(canary))
+		checks, _ := ctrl.runMetricChecks(canary)
+		assert.Equal(t, true, checks)
 	})
 }

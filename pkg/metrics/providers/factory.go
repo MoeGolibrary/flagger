@@ -18,17 +18,19 @@ package providers
 
 import (
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
+	"go.uber.org/zap"
 	rest "k8s.io/client-go/rest"
 )
 
 type Factory struct{}
 
-func (factory Factory) Provider(metricInterval string, provider flaggerv1.MetricTemplateProvider, credentials map[string][]byte, config *rest.Config) (Interface, error) {
+func (factory Factory) Provider(metricInterval string, provider flaggerv1.MetricTemplateProvider,
+	credentials map[string][]byte, config *rest.Config, logger *zap.SugaredLogger) (Interface, error) {
 	switch provider.Type {
 	case "prometheus":
 		return NewPrometheusProvider(provider, credentials)
 	case "datadog":
-		return NewDatadogProvider(metricInterval, provider, credentials)
+		return NewDatadogProvider(metricInterval, provider, credentials, logger)
 	case "cloudwatch":
 		return NewCloudWatchProvider(metricInterval, provider)
 	case "newrelic":
