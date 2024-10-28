@@ -219,13 +219,6 @@ func canaryToL4Match(canary *flaggerv1.Canary) []istiov1beta1.L4MatchAttributes 
 func (ir *IstioRouter) reconcileVirtualService(canary *flaggerv1.Canary) error {
 	apexName, primaryName, canaryName := canary.GetServiceNames()
 
-	if canary.Spec.Service.Delegation {
-		if len(canary.Spec.Service.Hosts) > 0 || len(canary.Spec.Service.Gateways) > 0 {
-			// delegate VirtualService cannot have hosts and gateways.
-			return fmt.Errorf("VirtualService %s.%s cannot have hosts and gateways when delegation enabled", apexName, canary.Namespace)
-		}
-	}
-
 	// set hosts and add the ClusterIP service host if it doesn't exists
 	hosts := canary.Spec.Service.Hosts
 	var hasServiceHost bool
@@ -258,12 +251,6 @@ func (ir *IstioRouter) reconcileVirtualService(canary *flaggerv1.Canary) error {
 	canaryRoute := []istiov1beta1.HTTPRouteDestination{
 		makeDestination(canary, primaryName, 100),
 		makeDestination(canary, canaryName, 0),
-	}
-
-	if canary.Spec.Service.Delegation {
-		// delegate VirtualService requires the hosts and gateway empty.
-		hosts = []string{}
-		gateways = []string{}
 	}
 
 	var newSpec istiov1beta1.VirtualServiceSpec
@@ -376,9 +363,32 @@ func (ir *IstioRouter) reconcileVirtualService(canary *flaggerv1.Canary) error {
 		}
 	}
 
+	err := ir.reconcileVirtualServiceDo(canary, apexName, newMetadata, newSpec, false)
+	if err != nil {
+		return err
+	}
+	if canary.Spec.Service.Delegation {
+		delegationName := fmt.Sprintf("delegate-%s", apexName)
+		err := ir.reconcileVirtualServiceDo(canary, delegationName, newMetadata, newSpec, true)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (ir *IstioRouter) reconcileVirtualServiceDo(canary *flaggerv1.Canary, apexName string, newMetadata *flaggerv1.CustomMetadata, newSpec istiov1beta1.VirtualServiceSpec, delegation bool) error {
+	if delegation {
+		// delegate VirtualService requires the hosts and gateway empty.
+		newSpec.Gateways = []string{}
+		newSpec.Hosts = []string{}
+	}
+
 	virtualService, err := ir.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
 	// insert
 	if errors.IsNotFound(err) {
+
 		virtualService = &istiov1beta1.VirtualService{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:        apexName,
@@ -410,7 +420,7 @@ func (ir *IstioRouter) reconcileVirtualService(canary *flaggerv1.Canary) error {
 		return fmt.Errorf("VirtualService %s.%s get query error %v", apexName, canary.Namespace, err)
 	}
 
-	if canary.Spec.Service.Delegation {
+	if delegation {
 		// delegate VirtualService requires the hosts and gateway empty.
 		virtualService.Spec.Gateways = []string{}
 		virtualService.Spec.Hosts = []string{}
@@ -736,6 +746,26 @@ func (ir *IstioRouter) SetRoutes(
 	if err != nil {
 		return fmt.Errorf("VirtualService %s.%s update failed: %w", apexName, canary.Namespace, err)
 	}
+	if canary.Spec.Service.Delegation {
+		delegateVsCopy := vsCopy.DeepCopy()
+		delegateVsName := fmt.Sprintf("delegate-%s", vsCopy.Name)
+		delegateVs, err := ir.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Get(context.TODO(), delegateVsName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("VirtualService %s.%s get query error %v", apexName, canary.Namespace, err)
+		}
+
+		delegateVs.Spec.Http = delegateVsCopy.Spec.Http
+		delegateVs.Spec.Tcp = delegateVsCopy.Spec.Tcp
+		// delegate VirtualService requires the hosts and gateway empty.
+		delegateVs.Spec.Gateways = []string{}
+		delegateVs.Spec.Hosts = []string{}
+
+		vs, err = ir.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Update(context.TODO(), delegateVs, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("VirtualService %s.%s update failed: %w", apexName, canary.Namespace, err)
+		}
+	}
+
 	return nil
 }
 
