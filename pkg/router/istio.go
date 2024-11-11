@@ -57,6 +57,10 @@ const maxAgeAttr = "Max-Age"
 // TODO 优化
 const envoyNamePrefix = "ef-transcoder-"
 
+// TODO 优化，先写死
+const canaryHeaderKey = "x-moe-canary"
+const canaryHeaderVal = "1"
+
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 // Reconcile creates or updates the Istio virtual service and destination rules
@@ -383,6 +387,29 @@ func (ir *IstioRouter) reconcileVirtualServiceDo(canary *flaggerv1.Canary, apexN
 		// delegate VirtualService requires the hosts and gateway empty.
 		newSpec.Gateways = []string{}
 		newSpec.Hosts = []string{}
+	}
+
+	_, _, canaryName := canary.GetServiceNames()
+	var httpRoute istiov1beta1.HTTPRoute
+	for _, http := range newSpec.Http {
+		if canaryRouteName == http.Name {
+			httpRoute = http
+			break
+		}
+	}
+	for _, route := range httpRoute.Route {
+		if route.Destination.Host == canaryName {
+			if route.Headers == nil {
+				route.Headers = &istiov1beta1.Headers{}
+			}
+			if route.Headers.Request == nil {
+				route.Headers.Request = &istiov1beta1.HeaderOperations{}
+			}
+			if route.Headers.Request.Set == nil {
+				route.Headers.Request.Set = make(map[string]string)
+			}
+			route.Headers.Request.Set[canaryHeaderKey] = canaryHeaderVal
+		}
 	}
 
 	virtualService, err := ir.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
@@ -739,6 +766,28 @@ func (ir *IstioRouter) SetRoutes(
 
 		if mw := canary.GetAnalysis().MirrorWeight; mw > 0 {
 			vsCopy.Spec.Http[0].MirrorPercentage = &istiov1beta1.Percent{Value: float64(mw)}
+		}
+	}
+
+	var httpRoute istiov1beta1.HTTPRoute
+	for _, http := range vsCopy.Spec.Http {
+		if canaryRouteName == http.Name {
+			httpRoute = http
+			break
+		}
+	}
+	for _, route := range httpRoute.Route {
+		if route.Destination.Host == canaryName {
+			if route.Headers == nil {
+				route.Headers = &istiov1beta1.Headers{}
+			}
+			if route.Headers.Request == nil {
+				route.Headers.Request = &istiov1beta1.HeaderOperations{}
+			}
+			if route.Headers.Request.Set == nil {
+				route.Headers.Request.Set = make(map[string]string)
+			}
+			route.Headers.Request.Set[canaryHeaderKey] = canaryHeaderVal
 		}
 	}
 

@@ -20,13 +20,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
-
-	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 )
 
 // https://docs.datadoghq.com/api/

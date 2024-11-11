@@ -371,7 +371,7 @@ func (c *Controller) runQuery(query string, canary *flaggerv1.Canary, provider p
 			return val, nil
 		}
 
-		if errors.Is(err, providers.ErrTooManyRequests) || errors.Is(err, providers.ErrNoValuesFound) {
+		if errors.Is(err, providers.ErrTooManyRequests) {
 			// Use the Canary's Interval for sleep
 			interval := canary.GetAnalysisInterval()
 			if interval > baseRetryDelay {
