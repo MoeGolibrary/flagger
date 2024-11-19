@@ -352,9 +352,9 @@ func toMetricModel(r *flaggerv1.Canary, interval string, variables map[string]st
 }
 
 func (c *Controller) runQuery(query string, canary *flaggerv1.Canary, provider providers.Interface) (float64, error) {
-	maxRetries := 3
-	baseRetryDelay := 10 * time.Second
-	maxRetryDelay := 1 * time.Minute // Set a maximum retry delay
+	maxRetries := 5
+	baseRetryDelay := 3 * time.Second
+	maxRetryDelay := 10 * time.Second // Set a maximum retry delay
 
 	// Initialize random number generator
 	ra := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -373,28 +373,15 @@ func (c *Controller) runQuery(query string, canary *flaggerv1.Canary, provider p
 
 		if errors.Is(err, providers.ErrTooManyRequests) {
 			// Use the Canary's Interval for sleep
-			interval := canary.GetAnalysisInterval()
-			if interval > baseRetryDelay {
-				interval = baseRetryDelay
-			}
-			// Exponential backoff with jitter and max delay
-			retryDelay := baseRetryDelay + time.Duration(ra.Intn(int(baseRetryDelay)*(i+1)))
-			if retryDelay > maxRetryDelay {
-				retryDelay = maxRetryDelay
-			}
+			retryDelay := baseRetryDelay + time.Duration(ra.Intn(int(maxRetryDelay)))
 
-			// Sleep in intervals and check skip analysis
-			for totalSleep := time.Duration(0); totalSleep < retryDelay; totalSleep += interval {
-				if totalSleep > 0 {
-					c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-						With("canary_name", canary.Name).
-						With("canary_namespace", canary.Namespace).
-						Debugf("Request Metrics error, try later, no: %d, interval: %v, totalSleep: %v, retryDelay: %v,", i, retryDelay, totalSleep, retryDelay)
-					time.Sleep(interval)
-				}
-				if c.checkSkipAnalysis(canary) {
-					return 0, providers.ErrSkipAnalysis
-				}
+			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+				With("canary_name", canary.Name).
+				With("canary_namespace", canary.Namespace).
+				Debugf("Request Metrics error, try later, no: %d, retryDelay: %v", i, retryDelay)
+			time.Sleep(retryDelay)
+			if c.checkSkipAnalysis(canary) {
+				return 0, providers.ErrSkipAnalysis
 			}
 		} else {
 			return 0, err

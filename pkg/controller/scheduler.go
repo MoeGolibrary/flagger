@@ -367,7 +367,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 			c.recordEventWarningf(cd, "Rolling back %s.%s: Error checking canary workload status: %v",
 				cd.Name, cd.Namespace, err)
 			c.alert(cd, fmt.Sprintf("Error checking canary workload status: %v", err),
-				true, flaggerv1.SeverityWarn)
+				true, flaggerv1.SeverityError)
 			c.rollback(cd, canaryController, meshRouter, scalerReconciler)
 		}
 		return
@@ -384,7 +384,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		cd.Status.Phase == flaggerv1.CanaryPhaseWaitingPromotion {
 		if ok := c.runRollbackHooks(cd, cd.Status.Phase); ok {
 			c.recordEventWarningf(cd, "Rolling back %s.%s manual webhook invoked", cd.Name, cd.Namespace)
-			c.alert(cd, "Rolling back manual webhook invoked", true, flaggerv1.SeverityWarn)
+			c.alert(cd, "Rolling back manual webhook invoked", true, flaggerv1.SeverityError)
 			c.rollback(cd, canaryController, meshRouter, scalerReconciler)
 			return
 		}

@@ -19,6 +19,7 @@ package providers
 import (
 	"errors"
 	"fmt"
+	"github.com/fluxcd/flagger/pkg/logger"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -30,6 +31,8 @@ import (
 
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 )
+
+var mylog, _ = logger.NewLogger("debug")
 
 func TestNewDatadogProvider(t *testing.T) {
 	appKey := "app-key"
@@ -43,7 +46,7 @@ func TestNewDatadogProvider(t *testing.T) {
 	md, err := time.ParseDuration(mi)
 	require.NoError(t, err)
 
-	dp, err := NewDatadogProvider("100s", flaggerv1.MetricTemplateProvider{}, cs)
+	dp, err := NewDatadogProvider("100s", flaggerv1.MetricTemplateProvider{}, cs, mylog)
 	require.NoError(t, err)
 	assert.Equal(t, "https://api.datadoghq.com/api/v1/validate", dp.apiKeyValidationEndpoint)
 	assert.Equal(t, "https://api.datadoghq.com/api/v1/query", dp.metricsQueryEndpoint)
@@ -86,6 +89,7 @@ func TestDatadogProvider_RunQuery(t *testing.T) {
 				datadogApplicationKeySecretKey: []byte(appKey),
 				datadogAPIKeySecretKey:         []byte(apiKey),
 			},
+			mylog,
 		)
 		require.NoError(t, err)
 
@@ -107,6 +111,7 @@ func TestDatadogProvider_RunQuery(t *testing.T) {
 				datadogApplicationKeySecretKey: []byte(appKey),
 				datadogAPIKeySecretKey:         []byte(apiKey),
 			},
+			mylog,
 		)
 		require.NoError(t, err)
 		_, err = dp.RunQuery("")
@@ -137,7 +142,9 @@ func TestDatadogProvider_IsOnline(t *testing.T) {
 				map[string][]byte{
 					datadogApplicationKeySecretKey: []byte(appKey),
 					datadogAPIKeySecretKey:         []byte(apiKey),
+					datadogKeysSecretKey:           []byte(`[{"api_key":"api-key","application_key":"app-key"}]`),
 				},
+				mylog,
 			)
 			require.NoError(t, err)
 

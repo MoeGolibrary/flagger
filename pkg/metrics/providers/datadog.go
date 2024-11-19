@@ -23,6 +23,7 @@ import (
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 	"go.uber.org/zap"
 	"io"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"time"
@@ -34,6 +35,8 @@ const (
 
 	datadogMetricsQueryPath     = "/api/v1/query"
 	datadogAPIKeyValidationPath = "/api/v1/validate"
+
+	datadogKeysSecretKey = "datadog_keys"
 
 	datadogAPIKeySecretKey = "datadog_api_key"
 	datadogAPIKeyHeaderKey = "DD-API-KEY"
@@ -48,12 +51,18 @@ const (
 type DatadogProvider struct {
 	metricsQueryEndpoint     string
 	apiKeyValidationEndpoint string
+	timeout                  time.Duration
+	apiKey                   string
+	applicationKey           string
+	keys                     []datadogKey
+	fromDelta                int64
+	logger                   *zap.SugaredLogger
+	ra                       *rand.Rand
+}
 
-	timeout        time.Duration
-	apiKey         string
-	applicationKey string
-	fromDelta      int64
-	logger         *zap.SugaredLogger
+type datadogKey struct {
+	ApiKey         string `json:"api_key" yaml:"apiKey"`
+	ApplicationKey string `json:"application_key" yaml:"applicationKey"`
 }
 
 type datadogResponse struct {
@@ -79,18 +88,27 @@ func NewDatadogProvider(metricInterval string,
 		metricsQueryEndpoint:     address + datadogMetricsQueryPath,
 		apiKeyValidationEndpoint: address + datadogAPIKeyValidationPath,
 		logger:                   logger,
+		ra:                       rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+
+	if b, ok := credentials[datadogKeysSecretKey]; ok {
+		if err := json.Unmarshal(b, &dd.keys); err != nil {
+			logger.Error("error unmarshaling datadog keys", zap.Error(err))
+		}
 	}
 
 	if b, ok := credentials[datadogAPIKeySecretKey]; ok {
 		dd.apiKey = string(b)
-	} else {
-		return nil, fmt.Errorf("datadog credentials does not contain datadog_api_key")
 	}
-
 	if b, ok := credentials[datadogApplicationKeySecretKey]; ok {
 		dd.applicationKey = string(b)
-	} else {
-		return nil, fmt.Errorf("datadog credentials does not contain datadog_application_key")
+	}
+	if dd.apiKey != "" && dd.applicationKey != "" {
+		dd.keys = append(dd.keys, datadogKey{ApiKey: dd.apiKey, ApplicationKey: dd.applicationKey})
+	}
+
+	if len(dd.keys) == 0 {
+		return nil, fmt.Errorf("no valid datadog keys found")
 	}
 
 	md, err := time.ParseDuration(metricInterval)
@@ -111,8 +129,11 @@ func (p *DatadogProvider) RunQuery(query string) (float64, error) {
 		return 0, fmt.Errorf("error http.NewRequest: %w", err)
 	}
 
-	req.Header.Set(datadogAPIKeyHeaderKey, p.apiKey)
-	req.Header.Set(datadogApplicationKeyHeaderKey, p.applicationKey)
+	// 随机从keys选择一个
+	key := p.keys[p.ra.Intn(len(p.keys))]
+	req.Header.Set(datadogAPIKeyHeaderKey, key.ApiKey)
+	req.Header.Set(datadogApplicationKeyHeaderKey, key.ApplicationKey)
+
 	now := time.Now().Unix()
 	q := req.URL.Query()
 	q.Add("query", query)
@@ -176,8 +197,11 @@ func (p *DatadogProvider) IsOnline() (bool, error) {
 		return false, fmt.Errorf("error http.NewRequest: %w", err)
 	}
 
-	req.Header.Add(datadogAPIKeyHeaderKey, p.apiKey)
-	req.Header.Add(datadogApplicationKeyHeaderKey, p.applicationKey)
+	// 随机从keys选择一个
+	key := p.keys[p.ra.Intn(len(p.keys))]
+	p.logger.Debugf("Datadog API Key: %s", key.ApiKey)
+	req.Header.Set(datadogAPIKeyHeaderKey, key.ApiKey)
+	req.Header.Set(datadogApplicationKeyHeaderKey, key.ApplicationKey)
 
 	ctx, cancel := context.WithTimeout(req.Context(), p.timeout)
 	defer cancel()
