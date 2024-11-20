@@ -23,4 +23,5 @@ type Interface interface {
 type Field struct {
 	Name  string
 	Value string
+	Type  string
 }

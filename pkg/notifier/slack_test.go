@@ -28,19 +28,33 @@ import (
 
 func TestSlack_Post(t *testing.T) {
 	fields := []Field{
-		{Name: "name1", Value: "value1"},
-		{Name: "name2", Value: "value2"},
+		{Name: "name1", Value: "value1", Type: "text"},
+		{Name: "name2", Value: "value2", Type: "text"},
+		{Name: "Link1", Value: "http://baidu.com", Type: "link"},
 	}
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 
-		var payload = SlackPayload{}
+		var payload SlackPayload
 		err = json.Unmarshal(b, &payload)
 		require.NoError(t, err)
+
 		require.Equal(t, "podinfo.test", payload.Attachments[0].AuthorName)
-		require.Equal(t, len(fields), len(payload.Attachments[0].Fields))
+		require.Equal(t, 2, len(payload.Attachments[0].Fields))  // 只有两个文本字段
+		require.Equal(t, 1, len(payload.Attachments[0].Actions)) // 有一个链接字段
+
+		// 检查 Fields 字段
+		require.Equal(t, "name1", payload.Attachments[0].Fields[0].Title)
+		require.Equal(t, "value1", payload.Attachments[0].Fields[0].Value)
+		require.Equal(t, "name2", payload.Attachments[0].Fields[1].Title)
+		require.Equal(t, "value2", payload.Attachments[0].Fields[1].Value)
+
+		// 检查 Actions 字段
+		require.Equal(t, "button", payload.Attachments[0].Actions[0].Type)
+		require.Equal(t, "Link1", payload.Attachments[0].Actions[0].Text)
+		require.Equal(t, "http://baidu.com", payload.Attachments[0].Actions[0].URL)
 	}))
 	defer ts.Close()
 
@@ -49,5 +63,4 @@ func TestSlack_Post(t *testing.T) {
 
 	err = slack.Post("podinfo", "test", "test", fields, "error")
 	require.NoError(t, err)
-
 }

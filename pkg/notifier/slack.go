@@ -43,17 +43,25 @@ type SlackPayload struct {
 
 // SlackAttachment holds the markdown message body
 type SlackAttachment struct {
-	Color      string       `json:"color"`
-	AuthorName string       `json:"author_name"`
-	Text       string       `json:"text"`
-	MrkdwnIn   []string     `json:"mrkdwn_in"`
-	Fields     []SlackField `json:"fields"`
+	Color      string        `json:"color"`
+	AuthorName string        `json:"author_name"`
+	Text       string        `json:"text"`
+	MrkdwnIn   []string      `json:"mrkdwn_in"`
+	Fields     []SlackField  `json:"fields"`
+	Actions    []SlackAction `json:"actions"` // 新增 Actions 字段
 }
 
 type SlackField struct {
 	Title string `json:"title"`
 	Value string `json:"value"`
 	Short bool   `json:"short"`
+}
+
+type SlackAction struct {
+	Type  string `json:"type"`
+	Text  string `json:"text"`
+	URL   string `json:"url"`
+	Style string `json:"style,omitempty"`
 }
 
 // NewSlack validates the Slack URL and returns a Slack object
@@ -93,9 +101,21 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 		color = "danger"
 	}
 
-	sfields := make([]SlackField, 0, len(fields))
+	sfields := make([]SlackField, 0)
 	for _, f := range fields {
-		sfields = append(sfields, SlackField{f.Name, f.Value, false})
+		if f.Type != "link" {
+			sfields = append(sfields, SlackField{f.Name, f.Value, false})
+		}
+	}
+	actions := make([]SlackAction, 0)
+	for _, f := range fields {
+		if f.Type == "link" {
+			actions = append(actions, SlackAction{
+				Type: "button",
+				Text: f.Name,
+				URL:  f.Value,
+			})
+		}
 	}
 
 	a := SlackAttachment{
@@ -104,6 +124,7 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 		Text:       message,
 		MrkdwnIn:   []string{"text"},
 		Fields:     sfields,
+		Actions:    actions, // 填充 Actions 字段
 	}
 
 	payload.Attachments = []SlackAttachment{a}

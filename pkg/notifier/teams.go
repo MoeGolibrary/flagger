@@ -65,7 +65,7 @@ func NewMSTeams(hookURL string, proxyURL string) (*MSTeams, error) {
 func (s *MSTeams) Post(workload string, namespace string, message string, fields []Field, severity string) error {
 	facts := make([]MSTeamsField, 0, len(fields))
 	for _, f := range fields {
-		facts = append(facts, MSTeamsField(f))
+		facts = append(facts, MSTeamsField{Name: f.Name, Value: f.Value})
 	}
 
 	payload := MSTeamsPayload{

@@ -103,8 +103,10 @@ func (c *Controller) scheduleCanaries() {
 		current[name] = fmt.Sprintf("%s.%s", cn.Spec.TargetRef.Name, cn.Namespace)
 
 		job, exists := c.jobs[name]
+		// get analysis interval, max to 1 minute
+		analysisInterval := getAnalysisInterval(cn)
 		// schedule new job for existing job with different analysis interval or non-existing job
-		if (exists && job.GetCanaryAnalysisInterval() != cn.GetAnalysisInterval()) || !exists {
+		if (exists && job.GetCanaryAnalysisInterval() != analysisInterval) || !exists {
 			if exists {
 				job.Stop()
 			} else {
@@ -117,8 +119,8 @@ func (c *Controller) scheduleCanaries() {
 				Namespace:        cn.Namespace,
 				function:         c.advanceCanary,
 				done:             make(chan bool),
-				ticker:           time.NewTicker(cn.GetAnalysisInterval()),
-				analysisInterval: cn.GetAnalysisInterval(),
+				ticker:           time.NewTicker(analysisInterval),
+				analysisInterval: analysisInterval,
 			}
 
 			c.jobs[name] = newJob
@@ -157,6 +159,13 @@ func (c *Controller) scheduleCanaries() {
 	for k, v := range stats {
 		c.recorder.SetTotal(k, v)
 	}
+}
+
+func getAnalysisInterval(cn *flaggerv1.Canary) time.Duration {
+	if cn.GetAnalysisInterval() > time.Minute {
+		return time.Minute
+	}
+	return cn.GetAnalysisInterval()
 }
 
 func (c *Controller) advanceCanary(name string, namespace string) {
@@ -337,6 +346,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	if restart := c.hasCanaryRevisionChanged(cd, canaryController); restart {
 		c.recordEventInfof(cd, "New revision detected! Restarting analysis for %s.%s",
 			cd.Spec.TargetRef.Name, cd.Namespace)
+		c.alert(cd, "New revision detected, progressing canary analysis.",
+			true, flaggerv1.SeverityInfo)
 
 		// route all traffic back to primary
 		primaryWeight = c.totalWeight(cd)
@@ -489,6 +500,11 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 			c.recordEventWarningf(cd, "Setting canaryAnalysis.iterations: 10")
 			cd.GetAnalysis().Iterations = 10
 		}
+	}
+
+	// 检查是否到达执行Canary的时间,否则返回
+	if cd.Status.LastTransitionTime.Add(cd.GetAnalysisInterval()).After(time.Now()) {
+		return
 	}
 
 	// strategy: A/B testing

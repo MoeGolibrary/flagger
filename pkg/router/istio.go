@@ -910,7 +910,14 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 func (ir *IstioRouter) Finalize(canary *flaggerv1.Canary) error {
 	// Need to see if I can get the annotation orig-configuration
 	apexName, _, _ := canary.GetServiceNames()
+	if canary.Spec.Service.Delegation {
+		_ = ir.finalizeDo(canary, fmt.Sprintf("delegate-%s", apexName))
+	}
 
+	return ir.finalizeDo(canary, apexName)
+}
+
+func (ir *IstioRouter) finalizeDo(canary *flaggerv1.Canary, apexName string) error {
 	vs, err := ir.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("VirtualService %s.%s get query error: %w", apexName, canary.Namespace, err)
@@ -944,6 +951,7 @@ func (ir *IstioRouter) Finalize(canary *flaggerv1.Canary) error {
 	if err != nil {
 		return fmt.Errorf("VirtualService %s.%s update error: %w", apexName, canary.Namespace, err)
 	}
+
 	return nil
 }
 

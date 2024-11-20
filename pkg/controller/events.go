@@ -219,6 +219,14 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 	}
 }
 
+const (
+	dashboardBaseURL = "https://us5.datadoghq.com/dashboard/5pp-9u8-u3i/moego-canary"
+	queryParams      = "?fromUser=false&refresh_mode=sliding&live=true"
+	tplVarCanary     = "tpl_var_canary%5B0%5D="
+	tplVarNamespace  = "tpl_var_namespace%5B0%5D="
+	tplVarPrimary    = "tpl_var_primary%5B0%5D="
+)
+
 func alertMetadata(canary *flaggerv1.Canary) []notifier.Field {
 	var fields []notifier.Field
 
@@ -262,5 +270,20 @@ func alertMetadata(canary *flaggerv1.Canary) []notifier.Field {
 			Value: "Blue/Green",
 		})
 	}
+	fields = append(fields, notifier.Field{
+		Name: "DataDog Dashboard",
+		Value: fmt.Sprintf(
+			"%s%s&%s%s&%s%s&%s%s-primary",
+			dashboardBaseURL,
+			queryParams,
+			tplVarCanary,
+			canary.GetName(),
+			tplVarNamespace,
+			canary.GetNamespace(),
+			tplVarPrimary,
+			canary.GetName(),
+		),
+		Type: "link",
+	})
 	return fields
 }
