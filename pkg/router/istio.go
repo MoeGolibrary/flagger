@@ -253,8 +253,8 @@ func (ir *IstioRouter) reconcileVirtualService(canary *flaggerv1.Canary) error {
 
 	// create destinations with primary weight 100% and canary weight 0%
 	canaryRoute := []istiov1beta1.HTTPRouteDestination{
-		makeDestination(canary, primaryName, 100),
-		makeDestination(canary, canaryName, 0),
+		makeDestination(canary, primaryName, 100, false),
+		makeDestination(canary, canaryName, 0, true),
 	}
 
 	var newSpec istiov1beta1.VirtualServiceSpec
@@ -301,71 +301,12 @@ func (ir *IstioRouter) reconcileVirtualService(canary *flaggerv1.Canary) error {
 	}
 	newMetadata.Annotations = filterMetadata(newMetadata.Annotations)
 
-	if canary.GetAnalysis().SessionAffinity != nil {
-		canaryWeight := canary.Status.CanaryWeight
-		weightedRoute := newSpec.Http[0]
-		newSpec.Http = ir.getSessionAffinityRoute(canary, canaryWeight, primaryName, canaryName, weightedRoute)
-	}
+	canaryWeight := canary.Status.CanaryWeight
+	primaryWeight := 100 - canaryWeight
+	mirrored := canary.GetAnalysis().Mirror
 
-	if !isTcp(canary) && len(canary.GetAnalysis().Match) > 0 {
-		canaryMatch := mergeMatchConditions(canary.GetAnalysis().Match, canary.Spec.Service.Match)
-		// if stepWeight or stepWeights are set, then the canary route is the only one
-		if canary.GetAnalysis().StepWeight > 0 || canary.GetAnalysis().StepWeights != nil {
-			if canary.GetAnalysis().SessionAffinity != nil {
-				stickyRoute := newSpec.Http[0].DeepCopy()
-				newSpec.Http[0].Match = append(canaryMatch, stickyRoute.Match...)
-			} else {
-				newSpec.Http = []istiov1beta1.HTTPRoute{
-					{
-						Match:      canaryMatch,
-						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
-						Timeout:    canary.Spec.Service.Timeout,
-						Retries:    canary.Spec.Service.Retries,
-						CorsPolicy: canary.Spec.Service.CorsPolicy,
-						Headers:    canary.Spec.Service.Headers,
-						Route:      canaryRoute,
-					},
-					{
-						Name:       canaryRouteName,
-						Match:      canary.Spec.Service.Match,
-						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
-						Timeout:    canary.Spec.Service.Timeout,
-						Retries:    canary.Spec.Service.Retries,
-						CorsPolicy: canary.Spec.Service.CorsPolicy,
-						Headers:    canary.Spec.Service.Headers,
-						Route:      canaryRoute,
-					},
-				}
-			}
-		} else {
-			if canary.GetAnalysis().SessionAffinity != nil {
-				stickyRoute := newSpec.Http[0].DeepCopy()
-				newSpec.Http[0].Match = append(canaryMatch, stickyRoute.Match...)
-			} else {
-				newSpec.Http = []istiov1beta1.HTTPRoute{
-					{
-						Name:       canaryRouteName,
-						Match:      canaryMatch,
-						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
-						Timeout:    canary.Spec.Service.Timeout,
-						Retries:    canary.Spec.Service.Retries,
-						CorsPolicy: canary.Spec.Service.CorsPolicy,
-						Headers:    canary.Spec.Service.Headers,
-						Route:      canaryRoute,
-					},
-					{
-						Match:      canary.Spec.Service.Match,
-						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
-						Timeout:    canary.Spec.Service.Timeout,
-						Retries:    canary.Spec.Service.Retries,
-						CorsPolicy: canary.Spec.Service.CorsPolicy,
-						Headers:    canary.Spec.Service.Headers,
-						Route:      canaryRoute,
-					},
-				}
-			}
-		}
-	}
+	// 更新路由权重等
+	ir.updateRouteWeights(canary, primaryWeight, canaryWeight, mirrored, &newSpec)
 
 	err := ir.reconcileVirtualServiceDo(canary, apexName, newMetadata, newSpec, false)
 	if err != nil {
@@ -387,29 +328,6 @@ func (ir *IstioRouter) reconcileVirtualServiceDo(canary *flaggerv1.Canary, apexN
 		// delegate VirtualService requires the hosts and gateway empty.
 		newSpec.Gateways = []string{}
 		newSpec.Hosts = []string{}
-	}
-
-	_, _, canaryName := canary.GetServiceNames()
-	var httpRoute istiov1beta1.HTTPRoute
-	for _, http := range newSpec.Http {
-		if canaryRouteName == http.Name {
-			httpRoute = http
-			break
-		}
-	}
-	for _, route := range httpRoute.Route {
-		if route.Destination.Host == canaryName {
-			if route.Headers == nil {
-				route.Headers = &istiov1beta1.Headers{}
-			}
-			if route.Headers.Request == nil {
-				route.Headers.Request = &istiov1beta1.HeaderOperations{}
-			}
-			if route.Headers.Request.Set == nil {
-				route.Headers.Request.Set = make(map[string]string)
-			}
-			route.Headers.Request.Set[canaryHeaderKey] = canaryHeaderVal
-		}
 	}
 
 	virtualService, err := ir.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
@@ -637,8 +555,8 @@ func (ir *IstioRouter) SetRoutes(
 		weightedRoute := istiov1beta1.TCPRoute{
 			Match: canaryToL4Match(canary),
 			Route: []istiov1beta1.HTTPRouteDestination{
-				makeDestination(canary, primaryName, primaryWeight),
-				makeDestination(canary, canaryName, canaryWeight),
+				makeDestination(canary, primaryName, primaryWeight, false),
+				makeDestination(canary, canaryName, canaryWeight, true),
 			},
 		}
 		vsCopy.Spec.Tcp = []istiov1beta1.TCPRoute{
@@ -652,144 +570,8 @@ func (ir *IstioRouter) SetRoutes(
 		return nil
 	}
 
-	// weighted routing (progressive canary)
-	weightedRoute := istiov1beta1.HTTPRoute{
-		Name:       canaryRouteName,
-		Match:      canary.Spec.Service.Match,
-		Rewrite:    canary.Spec.Service.GetIstioRewrite(),
-		Timeout:    canary.Spec.Service.Timeout,
-		Retries:    canary.Spec.Service.Retries,
-		CorsPolicy: canary.Spec.Service.CorsPolicy,
-		Headers:    canary.Spec.Service.Headers,
-		Route: []istiov1beta1.HTTPRouteDestination{
-			makeDestination(canary, primaryName, primaryWeight),
-			makeDestination(canary, canaryName, canaryWeight),
-		},
-	}
-	vsCopy.Spec.Http = []istiov1beta1.HTTPRoute{
-		weightedRoute,
-	}
-
-	if canary.Spec.Analysis.SessionAffinity != nil {
-		vsCopy.Spec.Http = ir.getSessionAffinityRoute(canary, canaryWeight, primaryName, canaryName, weightedRoute)
-	}
-
-	// fix routing (A/B testing)
-	if len(canary.GetAnalysis().Match) > 0 {
-		// merge the common routes with the canary ones
-		canaryMatch := mergeMatchConditions(canary.GetAnalysis().Match, canary.Spec.Service.Match)
-		// if stepWeight or stepWeights are set, then the canary route is the only one
-		if canary.GetAnalysis().StepWeight > 0 || canary.GetAnalysis().StepWeights != nil {
-			if canary.Spec.Analysis.SessionAffinity != nil {
-				stickyRoute := vsCopy.Spec.Http[0].DeepCopy()
-				vsCopy.Spec.Http[0].Match = append(canaryMatch, stickyRoute.Match...)
-			} else {
-				matchRoute := []istiov1beta1.HTTPRouteDestination{
-					makeDestination(canary, primaryName, 100),
-					makeDestination(canary, canaryName, 0),
-				}
-
-				if canaryWeight > 0 {
-					matchRoute = []istiov1beta1.HTTPRouteDestination{
-						makeDestination(canary, primaryName, 0),
-						makeDestination(canary, canaryName, 100),
-					}
-				}
-
-				vsCopy.Spec.Http = []istiov1beta1.HTTPRoute{
-					{
-						Match:      canaryMatch,
-						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
-						Timeout:    canary.Spec.Service.Timeout,
-						Retries:    canary.Spec.Service.Retries,
-						CorsPolicy: canary.Spec.Service.CorsPolicy,
-						Headers:    canary.Spec.Service.Headers,
-						Route:      matchRoute,
-					},
-					{
-						Name:       canaryRouteName,
-						Match:      canary.Spec.Service.Match,
-						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
-						Timeout:    canary.Spec.Service.Timeout,
-						Retries:    canary.Spec.Service.Retries,
-						CorsPolicy: canary.Spec.Service.CorsPolicy,
-						Headers:    canary.Spec.Service.Headers,
-						Route: []istiov1beta1.HTTPRouteDestination{
-							makeDestination(canary, primaryName, primaryWeight),
-							makeDestination(canary, canaryName, canaryWeight),
-						},
-					},
-				}
-			}
-		} else {
-			// add session affinity
-			if canary.Spec.Analysis.SessionAffinity != nil {
-				stickyRoute := vsCopy.Spec.Http[0].DeepCopy()
-				vsCopy.Spec.Http[0].Match = append(canaryMatch, stickyRoute.Match...)
-			} else {
-				vsCopy.Spec.Http = []istiov1beta1.HTTPRoute{
-					{
-						Name:       canaryRouteName,
-						Match:      canaryMatch,
-						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
-						Timeout:    canary.Spec.Service.Timeout,
-						Retries:    canary.Spec.Service.Retries,
-						CorsPolicy: canary.Spec.Service.CorsPolicy,
-						Headers:    canary.Spec.Service.Headers,
-						Route: []istiov1beta1.HTTPRouteDestination{
-							makeDestination(canary, primaryName, 0),
-							makeDestination(canary, canaryName, 100),
-						},
-					},
-					{
-						Match:      canary.Spec.Service.Match,
-						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
-						Timeout:    canary.Spec.Service.Timeout,
-						Retries:    canary.Spec.Service.Retries,
-						CorsPolicy: canary.Spec.Service.CorsPolicy,
-						Headers:    canary.Spec.Service.Headers,
-						Route: []istiov1beta1.HTTPRouteDestination{
-							makeDestination(canary, primaryName, 100),
-							makeDestination(canary, canaryName, 0),
-						},
-					},
-				}
-			}
-		}
-	}
-
-	// mirror
-	if mirrored {
-		vsCopy.Spec.Http[0].Mirror = &istiov1beta1.Destination{
-			Host: canaryName,
-		}
-
-		if mw := canary.GetAnalysis().MirrorWeight; mw > 0 {
-			vsCopy.Spec.Http[0].MirrorPercentage = &istiov1beta1.Percent{Value: float64(mw)}
-		}
-	}
-
-	var httpRoute istiov1beta1.HTTPRoute
-	for _, http := range vsCopy.Spec.Http {
-		if canaryRouteName == http.Name {
-			httpRoute = http
-			break
-		}
-	}
-	for _, route := range httpRoute.Route {
-		if route.Destination.Host == canaryName {
-			if route.Headers == nil {
-				route.Headers = &istiov1beta1.Headers{}
-			}
-			if route.Headers.Request == nil {
-				route.Headers.Request = &istiov1beta1.HeaderOperations{}
-			}
-			if route.Headers.Request.Set == nil {
-				route.Headers.Request.Set = make(map[string]string)
-			}
-			route.Headers.Request.Set[canaryHeaderKey] = canaryHeaderVal
-		}
-	}
+	// 更新路由权重等
+	ir.updateRouteWeights(canary, primaryWeight, canaryWeight, mirrored, &vsCopy.Spec)
 
 	vs, err = ir.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Update(context.TODO(), vsCopy, metav1.UpdateOptions{})
 	if err != nil {
@@ -818,6 +600,131 @@ func (ir *IstioRouter) SetRoutes(
 	return nil
 }
 
+func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
+	primaryWeight int,
+	canaryWeight int,
+	mirrored bool,
+	newSpec *istiov1beta1.VirtualServiceSpec) {
+	_, primaryName, canaryName := canary.GetServiceNames()
+
+	// weighted routing (progressive canary)
+	weightedRoute := istiov1beta1.HTTPRoute{
+		Name:       canaryRouteName,
+		Match:      canary.Spec.Service.Match,
+		Rewrite:    canary.Spec.Service.GetIstioRewrite(),
+		Timeout:    canary.Spec.Service.Timeout,
+		Retries:    canary.Spec.Service.Retries,
+		CorsPolicy: canary.Spec.Service.CorsPolicy,
+		Headers:    canary.Spec.Service.Headers,
+		Route: []istiov1beta1.HTTPRouteDestination{
+			makeDestination(canary, primaryName, primaryWeight, false),
+			makeDestination(canary, canaryName, canaryWeight, true),
+		},
+	}
+	newSpec.Http = []istiov1beta1.HTTPRoute{
+		weightedRoute,
+	}
+
+	if canary.Spec.Analysis.SessionAffinity != nil {
+		newSpec.Http = ir.getSessionAffinityRoute(canary, canaryWeight, primaryName, canaryName, weightedRoute)
+	}
+
+	// fix routing (A/B testing)
+	if len(canary.GetAnalysis().Match) > 0 {
+		// merge the common routes with the canary ones
+		canaryMatch := mergeMatchConditions(canary.GetAnalysis().Match, canary.Spec.Service.Match)
+		// if stepWeight or stepWeights are set, then the canary route is the only one
+		if canary.GetAnalysis().StepWeight > 0 || canary.GetAnalysis().StepWeights != nil {
+			if canary.Spec.Analysis.SessionAffinity != nil {
+				stickyRoute := newSpec.Http[0].DeepCopy()
+				newSpec.Http[0].Match = append(canaryMatch, stickyRoute.Match...)
+			} else {
+				matchRoute := []istiov1beta1.HTTPRouteDestination{
+					makeDestination(canary, primaryName, 100, false),
+					makeDestination(canary, canaryName, 0, true),
+				}
+
+				if canaryWeight > 0 {
+					matchRoute = []istiov1beta1.HTTPRouteDestination{
+						makeDestination(canary, primaryName, 0, false),
+						makeDestination(canary, canaryName, 100, true),
+					}
+				}
+
+				newSpec.Http = []istiov1beta1.HTTPRoute{
+					{
+						Match:      canaryMatch,
+						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
+						Timeout:    canary.Spec.Service.Timeout,
+						Retries:    canary.Spec.Service.Retries,
+						CorsPolicy: canary.Spec.Service.CorsPolicy,
+						Headers:    canary.Spec.Service.Headers,
+						Route:      matchRoute,
+					},
+					{
+						Name:       canaryRouteName,
+						Match:      canary.Spec.Service.Match,
+						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
+						Timeout:    canary.Spec.Service.Timeout,
+						Retries:    canary.Spec.Service.Retries,
+						CorsPolicy: canary.Spec.Service.CorsPolicy,
+						Headers:    canary.Spec.Service.Headers,
+						Route: []istiov1beta1.HTTPRouteDestination{
+							makeDestination(canary, primaryName, primaryWeight, false),
+							makeDestination(canary, canaryName, canaryWeight, true),
+						},
+					},
+				}
+			}
+		} else {
+			// add session affinity
+			if canary.Spec.Analysis.SessionAffinity != nil {
+				stickyRoute := newSpec.Http[0].DeepCopy()
+				newSpec.Http[0].Match = append(canaryMatch, stickyRoute.Match...)
+			} else {
+				newSpec.Http = []istiov1beta1.HTTPRoute{
+					{
+						Name:       canaryRouteName,
+						Match:      canaryMatch,
+						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
+						Timeout:    canary.Spec.Service.Timeout,
+						Retries:    canary.Spec.Service.Retries,
+						CorsPolicy: canary.Spec.Service.CorsPolicy,
+						Headers:    canary.Spec.Service.Headers,
+						Route: []istiov1beta1.HTTPRouteDestination{
+							makeDestination(canary, primaryName, 0, false),
+							makeDestination(canary, canaryName, 100, true),
+						},
+					},
+					{
+						Match:      canary.Spec.Service.Match,
+						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
+						Timeout:    canary.Spec.Service.Timeout,
+						Retries:    canary.Spec.Service.Retries,
+						CorsPolicy: canary.Spec.Service.CorsPolicy,
+						Headers:    canary.Spec.Service.Headers,
+						Route: []istiov1beta1.HTTPRouteDestination{
+							makeDestination(canary, primaryName, 100, false),
+							makeDestination(canary, canaryName, 0, true),
+						},
+					},
+				}
+			}
+		}
+	}
+
+	// mirror
+	if mirrored {
+		newSpec.Http[0].Mirror = &istiov1beta1.Destination{
+			Host: canaryName,
+		}
+
+		if mw := canary.GetAnalysis().MirrorWeight; mw > 0 {
+			newSpec.Http[0].MirrorPercentage = &istiov1beta1.Percent{Value: float64(mw)}
+		}
+	}
+}
+
 // getSessionAffinityRoute returns a route with a sticky session
 func (ir *IstioRouter) getSessionAffinityRoute(
 	canary *flaggerv1.Canary,
@@ -838,14 +745,20 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 			if routeDest.Destination.Host == canaryName {
 				if routeDest.Headers == nil {
 					routeDest.Headers = &istiov1beta1.Headers{
-						Response: &istiov1beta1.HeaderOperations{},
+						Response: &istiov1beta1.HeaderOperations{
+							Add: make(map[string]string),
+						},
 					}
+				} else if routeDest.Headers.Response == nil {
+					routeDest.Headers.Response = &istiov1beta1.HeaderOperations{
+						Add: make(map[string]string),
+					}
+				} else if routeDest.Headers.Response.Add == nil {
+					routeDest.Headers.Response.Add = make(map[string]string)
 				}
-				routeDest.Headers.Response.Add = map[string]string{
-					setCookieHeader: fmt.Sprintf("%s; %s=%d", canary.Status.SessionAffinityCookie, maxAgeAttr,
-						canary.Spec.Analysis.SessionAffinity.GetMaxAge(),
-					),
-				}
+				routeDest.Headers.Response.Add[setCookieHeader] = fmt.Sprintf("%s; %s=%d", canary.Status.SessionAffinityCookie, maxAgeAttr,
+					canary.Spec.Analysis.SessionAffinity.GetMaxAge(),
+				)
 			}
 			weightedRoute.Route[i] = routeDest
 		}
@@ -861,8 +774,8 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 		canaryMatch := mergeMatchConditions([]istiov1beta1.HTTPMatchRequest{cookieMatch}, canary.Spec.Service.Match)
 		stickyRoute.Match = canaryMatch
 		stickyRoute.Route = []istiov1beta1.HTTPRouteDestination{
-			makeDestination(canary, primaryName, 0),
-			makeDestination(canary, canaryName, 100),
+			makeDestination(canary, primaryName, 0, false),
+			makeDestination(canary, canaryName, 100, true),
 		}
 	} else {
 		// If canary weight is 0 and SessionAffinityCookie is non-blank, then it belongs to a previous canary run.
@@ -980,7 +893,7 @@ func mergeMatchConditions(canary, defaults []istiov1beta1.HTTPMatchRequest) []is
 }
 
 // makeDestination returns a an destination weight for the specified host
-func makeDestination(canary *flaggerv1.Canary, host string, weight int) istiov1beta1.HTTPRouteDestination {
+func makeDestination(canary *flaggerv1.Canary, host string, weight int, isCanary bool) istiov1beta1.HTTPRouteDestination {
 	dest := istiov1beta1.HTTPRouteDestination{
 		Destination: istiov1beta1.Destination{
 			Host: host,
@@ -1000,6 +913,16 @@ func makeDestination(canary *flaggerv1.Canary, host string, weight int) istiov1b
 				},
 			},
 			Weight: weight,
+		}
+	}
+
+	if isCanary {
+		dest.Headers = &istiov1beta1.Headers{
+			Request: &istiov1beta1.HeaderOperations{
+				Set: map[string]string{
+					canaryHeaderKey: canaryHeaderVal,
+				},
+			},
 		}
 	}
 
