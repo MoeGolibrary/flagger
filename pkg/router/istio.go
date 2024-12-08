@@ -402,6 +402,7 @@ func (ir *IstioRouter) reconcileVirtualServiceDo(canary *flaggerv1.Canary, apexN
 		)
 		labelsDiff := cmp.Diff(newMetadata.Labels, virtualService.Labels, cmpopts.EquateEmpty())
 		annotationsDiff := cmp.Diff(newMetadata.Annotations, virtualService.Annotations, cmpopts.EquateEmpty())
+		// TODO 优化diff  match为[]时，apply后为nil
 		if specDiff != "" || labelsDiff != "" || annotationsDiff != "" {
 			vtClone := virtualService.DeepCopy()
 			vtClone.Spec = newSpec

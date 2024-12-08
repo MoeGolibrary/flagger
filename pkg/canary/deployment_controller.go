@@ -455,6 +455,10 @@ func (c *DeploymentController) Finalize(cd *flaggerv1.Canary) error {
 			if err := c.ScaleFromZero(cd); err != nil {
 				return fmt.Errorf("ScaleFromZero failed: %w", err)
 			}
+			// Wait for the deployment to be ready after scaling from zero
+			if err := c.waitForDeploymentReady(cd); err != nil {
+				return fmt.Errorf("waiting for deployment %s.%s to be ready failed: %w", cd.Spec.TargetRef.Name, cd.Namespace, err)
+			}
 			return nil
 		}
 		return fmt.Errorf("deplyoment %s.%s get query error: %w", primaryName, cd.Namespace, err)
@@ -466,8 +470,29 @@ func (c *DeploymentController) Finalize(cd *flaggerv1.Canary) error {
 		if err := c.scale(cd, int32Default(primaryDep.Spec.Replicas)); err != nil {
 			return fmt.Errorf("scale failed: %w", err)
 		}
+		// Wait for the deployment to be ready after scaling
+		if err := c.waitForDeploymentReady(cd); err != nil {
+			return fmt.Errorf("waiting for deployment %s.%s to be ready failed: %w", cd.Spec.TargetRef.Name, cd.Namespace, err)
+		}
 	}
 	return nil
+}
+
+// waitForDeploymentReady waits for a deployment to be ready
+func (c *DeploymentController) waitForDeploymentReady(cd *flaggerv1.Canary) error {
+	return retry.OnError(retry.DefaultBackoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		_, err := c.IsCanaryReady(cd)
+		if err != nil {
+			return err
+		}
+		deployment, err := c.kubeClient.AppsV1().Deployments(cd.Namespace).Get(context.TODO(), cd.Spec.TargetRef.Name, metav1.GetOptions{})
+		if deployment.Status.AvailableReplicas == *deployment.Spec.Replicas {
+			return nil
+		}
+		return fmt.Errorf("deployment %s.%s not ready yet", cd.GetName(), cd.GetNamespace())
+	})
 }
 
 // Scale sets the canary deployment replicas

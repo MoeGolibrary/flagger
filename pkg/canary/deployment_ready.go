@@ -73,13 +73,20 @@ func (c *DeploymentController) IsCanaryReady(cd *flaggerv1.Canary) (bool, error)
 // if a deployment has exceeded the progress deadline it returns a non retriable error
 func (c *DeploymentController) isDeploymentReady(deployment *appsv1.Deployment, deadline int, readyThreshold int) (bool, error) {
 	retriable := true
+	c.logger.Debug("Checking if deployment is ready", "deployment", deployment.Name, "namespace", deployment.Namespace)
+
 	if deployment.Generation <= deployment.Status.ObservedGeneration {
+		c.logger.Debug("Observed generation matches or exceeds desired generation", "generation", deployment.Generation, "observedGeneration", deployment.Status.ObservedGeneration)
+
 		progress := c.getDeploymentCondition(deployment.Status, appsv1.DeploymentProgressing)
 		if progress != nil {
+			c.logger.Debug("Deployment is progressing", "reason", progress.Reason, "status", progress.Status)
+
 			// Determine if the deployment is stuck by checking if there is a minimum replicas unavailable condition
 			// and if the last update time exceeds the deadline
 			available := c.getDeploymentCondition(deployment.Status, appsv1.DeploymentAvailable)
 			if available != nil && available.Status == "False" && available.Reason == "MinimumReplicasUnavailable" {
+				c.logger.Debug("Deployment is stuck due to minimum replicas unavailable", "lastUpdateTime", available.LastUpdateTime, "deadline", deadline)
 				from := available.LastUpdateTime
 				delta := time.Duration(deadline) * time.Second
 				retriable = !from.Add(delta).Before(time.Now())
@@ -90,21 +97,37 @@ func (c *DeploymentController) isDeploymentReady(deployment *appsv1.Deployment, 
 		readyThresholdUpdatedReplicas := int32(float32(deployment.Status.UpdatedReplicas) * readyThresholdRatio)
 
 		if progress != nil && progress.Reason == "ProgressDeadlineExceeded" {
+			c.logger.Debug(fmt.Errorf("deployment %q exceeded its progress deadline", deployment.GetName()), "Deployment exceeded progress deadline")
 			return false, fmt.Errorf("deployment %q exceeded its progress deadline", deployment.GetName())
-		} else if deployment.Spec.Replicas != nil && deployment.Status.UpdatedReplicas < *deployment.Spec.Replicas {
+		}
+
+		// Check if all replicas are updated
+		if deployment.Spec.Replicas != nil && deployment.Status.UpdatedReplicas < *deployment.Spec.Replicas {
+			c.logger.Debug("Waiting for rollout to finish: not all replicas are updated", "updatedReplicas", deployment.Status.UpdatedReplicas, "desiredReplicas", *deployment.Spec.Replicas)
 			return retriable, fmt.Errorf("waiting for rollout to finish: %d out of %d new replicas have been updated",
 				deployment.Status.UpdatedReplicas, *deployment.Spec.Replicas)
-		} else if deployment.Status.Replicas > deployment.Status.UpdatedReplicas {
-			return retriable, fmt.Errorf("waiting for rollout to finish: %d old replicas are pending termination",
-				deployment.Status.Replicas-deployment.Status.UpdatedReplicas)
-		} else if deployment.Status.AvailableReplicas < readyThresholdUpdatedReplicas {
+		}
+
+		// Check if all replicas are available
+		if deployment.Status.AvailableReplicas < *deployment.Spec.Replicas {
+			c.logger.Debug("Waiting for rollout to finish: not all replicas are available", "availableReplicas", deployment.Status.AvailableReplicas, "desiredReplicas", *deployment.Spec.Replicas)
+			return retriable, fmt.Errorf("waiting for rollout to finish: %d out of %d replicas are available",
+				deployment.Status.AvailableReplicas, *deployment.Spec.Replicas)
+		}
+
+		// Check if the number of available replicas meets the ready threshold
+		if deployment.Status.AvailableReplicas < readyThresholdUpdatedReplicas {
+			c.logger.Debug("Waiting for rollout to finish: available replicas do not meet the ready threshold", "availableReplicas", deployment.Status.AvailableReplicas, "readyThresholdReplicas", readyThresholdUpdatedReplicas, "readyThreshold", readyThreshold)
 			return retriable, fmt.Errorf("waiting for rollout to finish: %d of %d (readyThreshold %d%%) updated replicas are available",
 				deployment.Status.AvailableReplicas, readyThresholdUpdatedReplicas, readyThreshold)
 		}
 	} else {
+		c.logger.Debug("Waiting for rollout to finish: observed generation less than desired generation", "generation", deployment.Generation, "observedGeneration", deployment.Status.ObservedGeneration)
 		return true, fmt.Errorf(
 			"waiting for rollout to finish: observed deployment generation less than desired generation")
 	}
+
+	c.logger.Debug("Deployment is ready", "deployment", deployment.Name, "namespace", deployment.Namespace)
 	return true, nil
 }
 
