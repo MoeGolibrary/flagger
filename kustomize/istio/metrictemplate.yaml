@@ -1,0 +1,180 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prom-auth
+  namespace: flagger-system
+data:
+  username: bW9lZ28tYWRtaW4=
+  password: bW9lZ28yMDIy
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: error-rate
+  namespace: flagger-system
+  annotations:
+    description: "计算目标服务在指定时间间隔内的请求成功率。"
+    example: "例如，计算过去一分钟内目标服务的成功请求占比。"
+spec:
+  provider:
+    address: http://prometheus.monitoring:9090
+    type: prometheus
+    secretRef:
+      name: prom-auth
+  query: |
+    rate(
+      istio_requests_total{
+        reporter="destination",
+        destination_workload="{{ target }}",
+        destination_workload_namespace="{{ namespace }}",
+        response_code=~"5.*|4.*|0"
+      }[{{ interval }}])
+    /
+    rate(
+      istio_requests_total{
+        reporter="destination",
+        destination_workload="{{ target }}",
+        destination_workload_namespace="{{ namespace }}"
+      }[{{ interval }}]
+    ) * 100
+
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: latency
+  namespace: flagger-system
+  annotations:
+    description: "计算目标服务在指定时间间隔内的请求延迟百分位数。"
+    example: "例如，计算过去一分钟内目标服务请求延迟的99%百分位。"
+spec:
+  provider:
+    address: http://prometheus.monitoring:9090
+    type: prometheus
+    secretRef:
+      name: prom-auth
+  query: |
+    histogram_quantile(0.99,
+      sum(
+        rate(
+          istio_request_duration_milliseconds_bucket{
+              reporter="destination",
+              destination_workload_namespace="{{ namespace }}",
+              destination_workload=~"{{ target }}"
+          }[{{ interval }}]
+        )
+      ) by (le)
+    )
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: grpc-success-rate
+  namespace: flagger-system
+  annotations:
+    description: "计算目标服务在指定时间间隔内的gRPC请求成功率。"
+    example: "例如，计算过去一分钟内目标服务的gRPC成功请求占比。"
+spec:
+  provider:
+    address: http://prometheus.monitoring:9090
+    type: prometheus
+    secretRef:
+      name: prom-auth
+  query: |
+    sum(
+        rate(
+            grpc_server_handled_total{
+              grpc_code!="OK",
+              kubernetes_namespace="{{ namespace }}",
+              kubernetes_pod_name=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
+            }[{{ interval }}]
+        )
+    )
+    /
+    sum(
+        rate(
+            grpc_server_started_total{
+              kubernetes_namespace="{{ namespace }}",
+              kubernetes_pod_name=~"{{ target }}-[0-9a-zA-Z]+(-[0-9a-zA-Z]+)"
+            }[{{ interval }}]
+        )
+    ) * 100
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: grpc-latency
+  namespace: flagger-system
+  annotations:
+    description: "计算目标服务在指定时间间隔内的gRPC请求延迟百分位数。"
+    example: "例如，计算过去一分钟内目标服务gRPC请求延迟的99%百分位。"
+spec:
+  provider:
+    address: http://prometheus.monitoring:9090
+    type: prometheus
+    secretRef:
+      name: prom-auth
+  query: |
+    histogram_quantile(0.99,
+      sum by (le) (
+        rate(
+          grpc_server_handling_seconds_bucket[{{ interval }}]
+        )
+      )
+    )
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: cpu-usage
+  namespace: flagger-system
+  annotations:
+    description: "计算目标容器在指定时间间隔内的CPU使用率。"
+    example: "例如，计算过去一分钟内目标容器的CPU使用率。"
+spec:
+  provider:
+    address: http://prometheus.monitoring:9090
+    type: prometheus
+    secretRef:
+      name: prom-auth
+  query: |
+    (
+      sum(rate(container_cpu_usage_seconds_total{
+        container="{{ target }}",
+        namespace="{{ namespace }}"
+      }[{{ interval }}]))
+    /
+      sum(container_spec_cpu_quota{
+        container="{{ target }}",
+        namespace="{{ namespace }}"
+      } / 100000)
+    ) * 100
+
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: memory-usage
+  namespace: flagger-system
+  annotations:
+    description: "计算目标容器在指定时间间隔内的内存使用率。"
+    example: "例如，计算过去一分钟内目标容器的内存使用率。"
+spec:
+  provider:
+    address: http://prometheus.monitoring:9090
+    type: prometheus
+    secretRef:
+      name: prom-auth
+  query: |
+    (
+      sum(container_memory_working_set_bytes{
+        container="{{ target }}",
+        namespace="{{ namespace }}"
+      })
+    /
+      sum(container_spec_memory_limit_bytes{
+        container="{{ target }}",
+        namespace="{{ namespace }}"
+      })
+    ) * 100
+

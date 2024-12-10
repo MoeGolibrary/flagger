@@ -1,0 +1,182 @@
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo
+  namespace: test
+spec:
+  # deployment reference
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  # the maximum time in seconds for the canary deployment
+  # to make progress before it is rollback (default 600s)
+  progressDeadlineSeconds: 600
+  # HPA reference (optional)
+  autoscalerRef:
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    name: podinfo
+  service:
+    # service port number
+    port: 9898
+    # container port number or name (optional)
+#    targetPort: 9898
+    portDiscovery: true
+    delegation: true
+#    match: [ ]
+    # Istio gateways (optional)
+#    gateways:
+#      - flagger-system/gw-default
+    # Istio virtual service host names (optional)
+#    hosts:
+#      - app.example.com
+    # Istio request timeout (optional)
+#    timeout: 30s
+    # Istio retry policy (optional)
+#    retries:
+#      attempts: 3
+#      perTryTimeout: 3s
+#      retryOn: 'gateway-error,connect-failure,refused-stream'
+#    # Istio traffic policy (optional)
+#    trafficPolicy:
+#      connectionPool:
+#        tcp:
+#          maxConnections: 100
+#          connectTimeout: 2s
+#        http:
+#          http1MaxPendingRequests: 100
+#          maxRequestsPerConnection: 100
+#      outlierDetection:
+#        consecutiveErrors: 5  # 连续 5 次错误触发熔断
+#        interval: 10s  # 检查间隔
+#        baseEjectionTime: 30s  # 基础熔断时间
+#        maxEjectionPercent: 100  # 最大熔断百分比
+  revertOnDeletion: true
+  suspend: false
+  # deploy straight to production without
+  # the metrics and webhook checks
+  skipAnalysis: false
+  analysis:
+    # schedule interval (default 60s)
+    interval: 1m
+    # max number of failed metric checks before rollback
+    threshold: 10
+    # max traffic percentage routed to canary
+    # percentage (0-100)
+    maxWeight: 80
+    # canary increment step
+    # percentage (0-100)
+    stepWeight: 40
+    # Incremental traffic step weights for the analysis phase
+    # percentage [1, 2, 10, 50]
+    # stepWeights: [1, 2, 10, 50]
+    # total number of iterations
+#    iterations: 10
+    # promotion increment step (default 100)
+    # percentage (0-100)
+    stepWeightPromotion: 100
+    # A/B testing match conditions
+    match:
+      - authority: {}
+        headers:
+          x-moe-canary:
+            exact: "1"
+        method: {}
+        name: default
+        scheme: {}
+        uri: {}
+#    # session affinity config
+#    sessionAffinity:
+#      # name of the cookie used
+#      cookieName: flagger-cookie
+#      # max age of the cookie (in seconds)
+#      # optional; defaults to 86400
+#      maxAge: 21600
+    metrics:
+#      - name: success-rate
+#        # minimum req success rate (non 5xx responses)
+#        # percentage (0-100)
+#        thresholdRange:
+#          min: 99
+#        interval: 30s
+#        templateRef:
+#          name: success-rate
+#          namespace: istio-system
+#      - name: latency
+#        # maximum req duration P99
+#        # milliseconds
+#        thresholdRange:
+#          max: 500
+#        interval: 30s
+#        templateRef:
+#          name: success-rate
+#          namespace: istio-system
+      - name: memory-usage
+        # maximum memory usage 80%
+        thresholdRange:
+          max: 80
+        interval: 1m
+        templateRef:
+          name: memory-usage
+          namespace: istio-system
+      - name: cpu-usage
+        # maximum cpu usage
+        # milliseconds
+        thresholdRange:
+          max: 80
+        interval: 1m
+        templateRef:
+          name: cpu-usage
+          namespace: istio-system
+    # testing (optional)
+    webhooks:
+#      - name: "start gate"
+#        type: confirm-rollout
+#        url: http://flagger-loadtester.test/gate/approve
+#        retries: 5
+      - name: acceptance-test
+        type: pre-rollout
+        url: http://flagger-loadtester.test/
+        timeout: 30s
+        metadata:
+          type: bash
+          cmd: "curl -sd 'test' http://podinfo-canary:9898/token | grep token"
+      - name: load-test
+        url: http://flagger-loadtester.test/
+        timeout: 5s
+        metadata:
+          cmd: "hey -z 1m -q 20 -c 2 http://podinfo-canary.test:9898/"
+      - name: grpc-load-test
+        url: http://flagger-loadtester.test/
+        timeout: 5s
+        metadata:
+          cmd: "ghz -z 1m -q 10 -c 2 --insecure podinfo-canary.test:9898"
+#      - name: "traffic increase gate"
+#        type: confirm-traffic-increase
+#        url: http://flagger-loadtester.test/gate/approve
+#      - name: "promotion gate"
+#        type: confirm-promotion
+#        url: http://flagger-loadtester.test/gate/approve
+#      - name: "notify"
+#        type: post-rollout
+#        url: https://ebe22f6bff7757f8a94129a58332baee.m.pipedream.net
+#        timeout: 5s
+#        metadata:
+#          some: "message"
+#      - name: "rollback gate"
+#        type: rollback
+#        url: http://flagger-loadtester.test/rollback/check
+#      - name: "send to Slack"
+#        type: event
+#        url: https://ebe22f6bff7757f8a94129a58332baee.m.pipedream.net
+#        retries: 3
+#        metadata:
+#          environment: "test"
+#          cluster: "flagger-test"
+#    alerts:
+#      - name: "on-call Slack"
+#        severity: info
+#        providerRef:
+#          name: on-call
+#          namespace: istio-system
