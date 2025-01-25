@@ -103,8 +103,8 @@ func (c *Controller) scheduleCanaries() {
 		current[name] = fmt.Sprintf("%s.%s", cn.Spec.TargetRef.Name, cn.Namespace)
 
 		job, exists := c.jobs[name]
-		// get analysis interval, max to 1 minute
-		analysisInterval := getAnalysisInterval(cn)
+		// get analysis interval
+		analysisInterval := cn.GetAnalysisInterval()
 		// schedule new job for existing job with different analysis interval or non-existing job
 		if (exists && job.GetCanaryAnalysisInterval() != analysisInterval) || !exists {
 			if exists {
@@ -119,7 +119,7 @@ func (c *Controller) scheduleCanaries() {
 				Namespace:        cn.Namespace,
 				function:         c.advanceCanary,
 				done:             make(chan bool),
-				ticker:           time.NewTicker(analysisInterval),
+				ticker:           time.NewTicker(getAnalysisInterval(cn)), // max to 30s
 				analysisInterval: analysisInterval,
 			}
 
@@ -162,8 +162,8 @@ func (c *Controller) scheduleCanaries() {
 }
 
 func getAnalysisInterval(cn *flaggerv1.Canary) time.Duration {
-	if cn.GetAnalysisInterval() > time.Minute {
-		return time.Minute
+	if cn.GetAnalysisInterval() > time.Second*30 {
+		return time.Second * 30
 	}
 	return cn.GetAnalysisInterval()
 }

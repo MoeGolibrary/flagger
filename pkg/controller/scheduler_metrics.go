@@ -354,7 +354,7 @@ func toMetricModel(r *flaggerv1.Canary, interval string, variables map[string]st
 func (c *Controller) runQuery(query string, canary *flaggerv1.Canary, provider providers.Interface) (float64, error) {
 	maxRetries := 5
 	baseRetryDelay := 3 * time.Second
-	maxRetryDelay := 10 * time.Second // Set a maximum retry delay
+	maxRetryDelay := 5 * time.Second // Set a maximum retry delay
 
 	// Initialize random number generator
 	ra := rand.New(rand.NewSource(time.Now().UnixNano()))
