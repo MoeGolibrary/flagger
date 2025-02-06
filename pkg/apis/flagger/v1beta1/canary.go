@@ -335,9 +335,10 @@ type CanaryThresholdRange struct {
 type AlertSeverity string
 
 const (
-	SeverityInfo  AlertSeverity = "info"
-	SeverityWarn  AlertSeverity = "warn"
-	SeverityError AlertSeverity = "error"
+	SeveritySuccess AlertSeverity = "success"
+	SeverityInfo    AlertSeverity = "info"
+	SeverityWarn    AlertSeverity = "warn"
+	SeverityError   AlertSeverity = "error"
 )
 
 // CanaryAlert defines an alert for this canary

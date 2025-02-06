@@ -227,17 +227,17 @@ func (c *DeploymentController) ScaleFromZero(cd *flaggerv1.Canary) error {
 }
 
 // GetMetadata returns the pod label selector and svc ports
-func (c *DeploymentController) GetMetadata(cd *flaggerv1.Canary) (string, string, map[string]int32, error) {
+func (c *DeploymentController) GetMetadata(cd *flaggerv1.Canary) (string, string, map[string]int32, map[string]string, error) {
 	targetName := cd.Spec.TargetRef.Name
 
 	canaryDep, err := c.kubeClient.AppsV1().Deployments(cd.Namespace).Get(context.TODO(), targetName, metav1.GetOptions{})
 	if err != nil {
-		return "", "", nil, fmt.Errorf("deployment %s.%s get query error: %w", targetName, cd.Namespace, err)
+		return "", "", nil, nil, fmt.Errorf("deployment %s.%s get query error: %w", targetName, cd.Namespace, err)
 	}
 
 	label, labelValue, err := c.getSelectorLabel(canaryDep)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("getSelectorLabel failed: %w", err)
+		return "", "", nil, nil, fmt.Errorf("getSelectorLabel failed: %w", err)
 	}
 
 	var ports map[string]int32
@@ -245,7 +245,7 @@ func (c *DeploymentController) GetMetadata(cd *flaggerv1.Canary) (string, string
 		ports = getPorts(cd, canaryDep.Spec.Template.Spec.Containers)
 	}
 
-	return label, labelValue, ports, nil
+	return label, labelValue, ports, canaryDep.Labels, nil
 }
 func (c *DeploymentController) createPrimaryDeployment(cd *flaggerv1.Canary, includeLabelPrefix []string) error {
 	targetName := cd.Spec.TargetRef.Name

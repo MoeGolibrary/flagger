@@ -31,7 +31,7 @@ func (c *Controller) runConfirmTrafficIncreaseHooks(canary *flaggerv1.Canary) bo
 				c.recordEventWarningf(canary, "Halt %s.%s advancement waiting for traffic increase approval %s",
 					canary.Name, canary.Namespace, webhook.Name)
 				if !webhook.MuteAlert {
-					c.alert(canary, "Canary traffic increase is waiting for approval.", false, flaggerv1.SeverityWarn)
+					c.alert(canary, fmt.Sprintf("Halt %s.%s advancement waiting for traffic increase approval %s", canary.Name, canary.Namespace, webhook.Name), false, flaggerv1.SeverityWarn)
 				}
 				return false
 			}
@@ -55,7 +55,8 @@ func (c *Controller) runConfirmRolloutHooks(canary *flaggerv1.Canary, canaryCont
 					c.recordEventWarningf(canary, "Halt %s.%s advancement waiting for approval %s",
 						canary.Name, canary.Namespace, webhook.Name)
 					if !webhook.MuteAlert {
-						c.alert(canary, "Canary is waiting for approval.", false, flaggerv1.SeverityWarn)
+						c.alert(canary, fmt.Sprintf("Halt %s.%s advancement waiting for approval %s",
+							canary.Name, canary.Namespace, webhook.Name), false, flaggerv1.SeverityWarn)
 					}
 				}
 				return false
@@ -80,7 +81,8 @@ func (c *Controller) runConfirmPromotionHooks(canary *flaggerv1.Canary, canaryCo
 					c.recordEventWarningf(canary, "Halt %s.%s advancement waiting for promotion approval %s",
 						canary.Name, canary.Namespace, webhook.Name)
 					if !webhook.MuteAlert {
-						c.alert(canary, "Canary promotion is waiting for approval.", false, flaggerv1.SeverityWarn)
+						c.alert(canary, fmt.Sprintf("Halt %s.%s advancement waiting for promotion approval %s",
+							canary.Name, canary.Namespace, webhook.Name), false, flaggerv1.SeverityWarn)
 					}
 				} else {
 					if err := canaryController.SetStatusIterations(canary, canary.GetAnalysis().Iterations-1); err != nil {

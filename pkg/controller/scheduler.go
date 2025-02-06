@@ -195,7 +195,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	// init controller based on target kind
 	canaryController := c.canaryFactory.Controller(cd.Spec.TargetRef.Kind)
 
-	labelSelector, labelValue, ports, err := canaryController.GetMetadata(cd)
+	labelSelector, labelValue, ports, _, err := canaryController.GetMetadata(cd)
 	if err != nil {
 		c.recordEventWarningf(cd, "%v", err)
 		return
@@ -242,8 +242,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 			c.recordEventWarningf(cd, "Rolling back %s.%s: Progress deadline exceeded. Primary workload creation failed: %v",
 				cd.Name, cd.Namespace, err)
 
-			c.alert(cd, fmt.Sprintf("Progress deadline exceeded. Primary workload creation failed: %v", err),
-				true, flaggerv1.SeverityError)
+			c.alert(cd, fmt.Sprintf("Rolling back %s.%s: Progress deadline exceeded. Primary workload creation failed: %v", cd.Name, cd.Namespace, err),
+				false, flaggerv1.SeverityError)
 
 			c.rollback(cd, canaryController, meshRouter, scalerReconciler)
 		}
@@ -320,8 +320,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 			if !retriable {
 				c.recordEventWarningf(cd, "Rolling back %s.%s: Progress deadline exceeded. Primary workload is not ready: %v",
 					cd.Name, cd.Namespace, err)
-				c.alert(cd, fmt.Sprintf("Progress deadline exceeded. Primary workload is not ready: %v", err),
-					true, flaggerv1.SeverityError)
+				c.alert(cd, fmt.Sprintf("Rolling back %s.%s: Progress deadline exceeded. Primary workload is not ready: %v", cd.Name, cd.Namespace, err),
+					false, flaggerv1.SeverityError)
 				c.rollback(cd, canaryController, meshRouter, scalerReconciler)
 			}
 			return
@@ -344,10 +344,11 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// check if canary revision changed during analysis
 	if restart := c.hasCanaryRevisionChanged(cd, canaryController); restart {
-		c.recordEventInfof(cd, "New revision detected! Restarting analysis for %s.%s",
+		c.recordEventInfof(cd, "New revision detected! Restarting Canary analysis for %s.%s",
 			cd.Spec.TargetRef.Name, cd.Namespace)
-		c.alert(cd, "New revision detected, progressing canary analysis.",
-			true, flaggerv1.SeverityInfo)
+		c.alert(cd, fmt.Sprintf("New revision detected! Restarting Canary analysis for %s.%s",
+			cd.Spec.TargetRef.Name, cd.Namespace),
+			true, flaggerv1.SeverityWarn)
 
 		// route all traffic back to primary
 		primaryWeight = c.totalWeight(cd)
@@ -377,8 +378,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		if !retriable {
 			c.recordEventWarningf(cd, "Rolling back %s.%s: Error checking canary workload status: %v",
 				cd.Name, cd.Namespace, err)
-			c.alert(cd, fmt.Sprintf("Error checking canary workload status: %v", err),
-				true, flaggerv1.SeverityError)
+			c.alert(cd, fmt.Sprintf("Rolling back %s.%s: Canary Progress deadline exceeded. Error checking canary workload status: %v", cd.Name, cd.Namespace, err),
+				false, flaggerv1.SeverityError)
 			c.rollback(cd, canaryController, meshRouter, scalerReconciler)
 		}
 		return
@@ -395,7 +396,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		cd.Status.Phase == flaggerv1.CanaryPhaseWaitingPromotion {
 		if ok := c.runRollbackHooks(cd, cd.Status.Phase); ok {
 			c.recordEventWarningf(cd, "Rolling back %s.%s manual webhook invoked", cd.Name, cd.Namespace)
-			c.alert(cd, "Rolling back manual webhook invoked", true, flaggerv1.SeverityError)
+			c.alert(cd, fmt.Sprintf("Rolling back  %s.%s manual webhook invoked", cd.Name, cd.Namespace), false, flaggerv1.SeverityError)
 			c.rollback(cd, canaryController, meshRouter, scalerReconciler)
 			return
 		}
@@ -435,7 +436,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		c.runPostRolloutHooks(cd, flaggerv1.CanaryPhaseSucceeded)
 		c.recordEventInfof(cd, "Promotion completed! Scaling down %s.%s", cd.Spec.TargetRef.Name, cd.Namespace)
 		c.alert(cd, "Canary analysis completed successfully, promotion finished.",
-			true, flaggerv1.SeverityInfo)
+			false, flaggerv1.SeveritySuccess)
 		return
 	}
 
@@ -445,8 +446,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		if !retriable {
 			c.recordEventWarningf(cd, "Rolling back %s.%s progress deadline exceeded %v",
 				cd.Name, cd.Namespace, err)
-			c.alert(cd, fmt.Sprintf("Rolling back: Progress deadline exceeded and failed checks exceeded threshold: %v", err),
-				true, flaggerv1.SeverityError)
+			c.alert(cd, fmt.Sprintf("Rolling back %s.%s . Progress deadline exceeded and failed checks exceeded threshold: %v", cd.Name, cd.Namespace, err),
+				false, flaggerv1.SeverityError)
 		}
 		c.rollback(cd, canaryController, meshRouter, scalerReconciler)
 		return
@@ -817,7 +818,7 @@ func (c *Controller) shouldSkipAnalysis(canary *flaggerv1.Canary, canaryControll
 	// regardless if analysis is being skipped, rollback if canary failed to progress
 	if !retriable {
 		c.recordEventWarningf(canary, "Rolling back %s.%s progress deadline exceeded %v", canary.Name, canary.Namespace, err)
-		c.alert(canary, fmt.Sprintf("Rolling back %s.%s progress deadline exceeded %v", canary.Name, canary.Namespace, err), true, flaggerv1.SeverityError)
+		c.alert(canary, fmt.Sprintf("Rolling back %s.%s progress deadline exceeded %v", canary.Name, canary.Namespace, err), false, flaggerv1.SeverityError)
 		c.rollback(canary, canaryController, meshRouter, scalerReconciler)
 
 		return true
@@ -870,7 +871,7 @@ func (c *Controller) shouldSkipAnalysis(canary *flaggerv1.Canary, canaryControll
 	c.recordEventInfof(canary, "Promotion completed! Canary analysis was skipped for %s.%s",
 		canary.Spec.TargetRef.Name, canary.Namespace)
 	c.alert(canary, "Canary analysis was skipped, promotion finished.",
-		true, flaggerv1.SeverityInfo)
+		false, flaggerv1.SeveritySuccess)
 
 	return true
 }
@@ -938,7 +939,7 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 		canaryPhaseProgressing := canary.DeepCopy()
 		canaryPhaseProgressing.Status.Phase = flaggerv1.CanaryPhaseProgressing
 		c.recordEventInfof(canaryPhaseProgressing, "New revision detected! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace)
-		c.alert(canaryPhaseProgressing, "New revision detected, progressing canary analysis.",
+		c.alert(canaryPhaseProgressing, fmt.Sprintf("New revision detected, progressing canary analysis! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace),
 			true, flaggerv1.SeverityInfo)
 
 		if scalerReconciler != nil {
@@ -982,8 +983,8 @@ func (c *Controller) rollback(canary *flaggerv1.Canary, canaryController canary.
 	if canary.Status.FailedChecks >= canary.GetAnalysisThreshold() {
 		c.recordEventWarningf(canary, "Rolling back %s.%s failed checks threshold reached %v",
 			canary.Name, canary.Namespace, canary.Status.FailedChecks)
-		c.alert(canary, fmt.Sprintf("Failed checks threshold reached %v", canary.Status.FailedChecks),
-			true, flaggerv1.SeverityError)
+		c.alert(canary, fmt.Sprintf("Rolling back %s.%s .Failed checks threshold reached %v", canary.Name, canary.Namespace, canary.Status.FailedChecks),
+			false, flaggerv1.SeverityError)
 	}
 
 	// route all traffic back to primary
@@ -1043,8 +1044,8 @@ func (c *Controller) setPhaseInitialized(cd *flaggerv1.Canary, canaryController 
 
 		c.recorder.SetStatus(cd, flaggerv1.CanaryPhaseInitialized)
 		c.recordEventInfof(cd, "Initialization done! %s.%s", cd.Name, cd.Namespace)
-		c.alert(cd, fmt.Sprintf("New %s detected, initialization completed.", cd.Spec.TargetRef.Kind),
-			true, flaggerv1.SeverityInfo)
+		c.alert(cd, fmt.Sprintf("New %s detected, initialization completed! %s.%s", cd.Spec.TargetRef.Kind, cd.Name, cd.Namespace),
+			true, flaggerv1.SeveritySuccess)
 	}
 	return nil
 }
@@ -1099,7 +1100,7 @@ func (c *Controller) recorderMetrics(name string, namespace string) {
 	// init controller based on target kind
 	canaryController := c.canaryFactory.Controller(cd.Spec.TargetRef.Kind)
 
-	labelSelector, _, _, err := canaryController.GetMetadata(cd)
+	labelSelector, _, _, _, err := canaryController.GetMetadata(cd)
 	if err != nil {
 		c.recordEventWarningf(cd, "%v", err)
 		return

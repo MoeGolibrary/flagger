@@ -20,9 +20,10 @@ import "time"
 
 // CanaryJob holds the reference to a canary deployment schedule
 type CanaryJob struct {
-	Name             string
-	Namespace        string
-	function         func(name string, namespace string)
+	Name      string
+	Namespace string
+	function  func(name string, namespace string)
+
 	done             chan bool
 	ticker           *time.Ticker
 	analysisInterval time.Duration

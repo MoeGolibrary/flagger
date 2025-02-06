@@ -150,6 +150,7 @@ The following tables lists the configurable parameters of the Flagger chart and 
 | `slack.proxyUrl`                     | Slack proxy url                                                                                                                                    | None                                  |
 | `slack.channel`                      | Slack channel                                                                                                                                      | None                                  |
 | `slack.user`                         | Slack username                                                                                                                                     | `flagger`                             |
+| `slack.sendAt`                       | Slack sendAt                                                                                                                                       | `false`                               |
 | `msteams.url`                        | Microsoft Teams incoming webhook                                                                                                                   | None                                  |
 | `msteams.proxyUrl`                   | Microsoft Teams proxy url                                                                                                                          | None                                  |
 | `clusterName`                        | When specified, Flagger will add the cluster name to alerts                                                                                        | `""`                                  |
@@ -196,7 +197,8 @@ $ helm upgrade -i flagger flagger/flagger \
   --set slack.channel=general
 ```
 
-Alternatively, a YAML file that specifies the values for the above parameters can be provided while installing the chart. For example,
+Alternatively, a YAML file that specifies the values for the above parameters can be provided while installing the
+chart. For example,
 
 ```console
 $ helm upgrade -i flagger flagger/flagger \

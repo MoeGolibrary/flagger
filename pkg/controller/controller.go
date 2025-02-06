@@ -71,6 +71,10 @@ type Controller struct {
 	eventWebhook         string
 	clusterName          string
 	noCrossNamespaceRefs bool
+	// 是否发送@消息
+	sendAt        bool
+	datadogKeys   []DatadogKey
+	slackUsersMap map[string]*SlackUser
 }
 
 type Informers struct {
@@ -94,6 +98,7 @@ func NewController(
 	eventWebhook string,
 	clusterName string,
 	noCrossNamespaceRefs bool,
+	sendAt bool,
 	kubeConfig *rest.Config,
 ) *Controller {
 	logger.Debug("Creating event broadcaster")
@@ -129,6 +134,16 @@ func NewController(
 		eventWebhook:         eventWebhook,
 		clusterName:          clusterName,
 		noCrossNamespaceRefs: noCrossNamespaceRefs,
+		sendAt:               sendAt,
+	}
+
+	err := ctrl.initSlackUsers()
+	if err != nil {
+		logger.Errorf("Error initializing slack users: %v", err)
+	}
+	err = ctrl.initDatadogKeys()
+	if err != nil {
+		logger.Errorf("Error initializing datadog keys: %v", err)
 	}
 
 	flaggerInformers.CanaryInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

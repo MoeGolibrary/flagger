@@ -93,7 +93,7 @@ func (c *Controller) finalize(old interface{}) error {
 		return fmt.Errorf("canary not ready during finalizing: %w", err)
 	}
 
-	labelSelector, labelValue, ports, err := canaryController.GetMetadata(canary)
+	labelSelector, labelValue, ports, _, err := canaryController.GetMetadata(canary)
 	if err != nil {
 		return fmt.Errorf("failed to get metadata for router finalizing: %w", err)
 	}

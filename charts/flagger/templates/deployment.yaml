@@ -59,7 +59,7 @@ spec:
         {{- end }}
       {{- if .Values.podPriorityClassName }}
       priorityClassName: {{ .Values.podPriorityClassName }}
-      {{- end }}                  
+      {{- end }}
       containers:
         - name: flagger
           {{- if .Values.securityContext.enabled }}
@@ -107,6 +107,9 @@ spec:
           {{- end }}
           {{- if .Values.slack.channel }}
           - -slack-channel={{ .Values.slack.channel }}
+          {{- end }}
+          {{- if .Values.slack.channel }}
+          - -send-at={{ .Values.slack.sendAt }}
           {{- end }}
           {{- if .Values.msteams.url }}
           - -msteams-url={{ .Values.msteams.url }}

@@ -97,7 +97,9 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 	}
 
 	color := "good"
-	if severity == "error" {
+	if severity == "warn" {
+		color = "warning"
+	} else if severity == "error" {
 		color = "danger"
 	}
 
@@ -119,12 +121,11 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 	}
 
 	a := SlackAttachment{
-		Color:      color,
-		AuthorName: fmt.Sprintf("%s.%s", workload, namespace),
-		Text:       message,
-		MrkdwnIn:   []string{"text"},
-		Fields:     sfields,
-		Actions:    actions, // 填充 Actions 字段
+		Color:    color,
+		Text:     fmt.Sprintf("Workload: %s | Namespace: %s \n", workload, namespace) + message,
+		MrkdwnIn: []string{"text"},
+		Fields:   sfields,
+		Actions:  actions, // 填充 Actions 字段
 	}
 
 	payload.Attachments = []SlackAttachment{a}
