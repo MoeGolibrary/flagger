@@ -371,6 +371,8 @@ const (
 	EventHook HookType = "event"
 	// RollbackHook rollback canary analysis if webhook returns HTTP 200
 	RollbackHook HookType = "rollback"
+	// SkipHook skips canary analysis if webhook returns HTTP 200
+	SkipHook HookType = "skip"
 	// ConfirmTrafficIncreaseHook increases traffic weight if webhook returns HTTP 200
 	ConfirmTrafficIncreaseHook = "confirm-traffic-increase"
 )
@@ -416,6 +418,12 @@ type CanaryWebhookPayload struct {
 	// Can be used to identify a Canary for a specific configuration of the
 	// deployed resources.
 	Checksum string `json:"checksum"`
+
+	// BuildId of the Workload
+	BuildId string `json:"buildId"`
+
+	// Type
+	Type HookType `json:"type"`
 
 	// Metadata (key-value pairs) for this webhook
 	Metadata map[string]string `json:"metadata,omitempty"`

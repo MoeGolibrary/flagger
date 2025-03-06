@@ -80,6 +80,8 @@ type CanaryStatus struct {
 	// +optional
 	TrackedConfigs *map[string]string `json:"trackedConfigs,omitempty"`
 	// +optional
+	LastBuildId string `json:"lastBuildId,omitempty"`
+	// +optional
 	LastAppliedSpec string `json:"lastAppliedSpec,omitempty"`
 	// +optional
 	LastPromotedSpec string `json:"lastPromotedSpec,omitempty"`

@@ -143,3 +143,18 @@ func (c *Controller) runRollbackHooks(canary *flaggerv1.Canary, phase flaggerv1.
 	}
 	return false
 }
+
+func (c *Controller) runSkipHooks(canary *flaggerv1.Canary, phase flaggerv1.CanaryPhase) bool {
+	for _, webhook := range canary.GetAnalysis().Webhooks {
+		if webhook.Type == flaggerv1.SkipHook {
+			err := CallWebhook(*canary, phase, webhook)
+			if err != nil {
+				c.recordEventInfof(canary, "Skip Canary hook %s not signaling a rollback", webhook.Name)
+			} else {
+				c.recordEventWarningf(canary, "Skip Canary check %s passed", webhook.Name)
+				return true
+			}
+		}
+	}
+	return false
+}

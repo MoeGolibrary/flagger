@@ -811,7 +811,14 @@ func (c *Controller) runAnalysis(canary *flaggerv1.Canary) (bool, error) {
 }
 
 func (c *Controller) shouldSkipAnalysis(canary *flaggerv1.Canary, canaryController canary.Controller, meshRouter router.Interface, scalerReconciler canary.ScalerReconciler, err error, retriable bool) bool {
-	if !canary.SkipAnalysis() {
+	skipAnalysis := canary.SkipAnalysis()
+	skipCanary := false
+
+	if skipCanary = c.runSkipHooks(canary, canary.Status.Phase); skipCanary {
+		c.recordEventWarningf(canary, "Skip Canary %s.%s manual webhook invoked", canary.Name, canary.Namespace)
+		c.alert(canary, fmt.Sprintf("Skip Canary %s.%s manual webhook invoked", canary.Name, canary.Namespace), false, flaggerv1.SeverityError)
+	}
+	if !skipAnalysis || !skipCanary {
 		return false
 	}
 

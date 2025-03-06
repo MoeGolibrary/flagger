@@ -90,6 +90,8 @@ func CallWebhook(canary flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flagger
 		Namespace: canary.Namespace,
 		Phase:     phase,
 		Checksum:  canaryChecksum(canary),
+		BuildId:   canary.Status.LastBuildId,
+		Type:      w.Type,
 	}
 
 	if w.Metadata != nil {
@@ -111,6 +113,8 @@ func CallEventWebhook(r *flaggerv1.Canary, w flaggerv1.CanaryWebhook, message, e
 		Namespace: r.Namespace,
 		Phase:     r.Status.Phase,
 		Checksum:  canaryChecksum(*r),
+		BuildId:   r.Status.LastBuildId,
+		Type:      w.Type,
 		Metadata: map[string]string{
 			"eventMessage": message,
 			"eventType":    eventtype,

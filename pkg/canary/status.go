@@ -29,7 +29,9 @@ import (
 	clientset "github.com/fluxcd/flagger/pkg/client/clientset/versioned"
 )
 
-func syncCanaryStatus(flaggerClient clientset.Interface, cd *flaggerv1.Canary, status flaggerv1.CanaryStatus, canaryResource interface{}, setAll func(cdCopy *flaggerv1.Canary)) error {
+func syncCanaryStatus(flaggerClient clientset.Interface, cd *flaggerv1.Canary,
+	status flaggerv1.CanaryStatus, canaryResource interface{}, buildId string,
+	setAll func(cdCopy *flaggerv1.Canary)) error {
 	hash := ComputeHash(canaryResource)
 
 	firstTry := true
@@ -48,6 +50,7 @@ func syncCanaryStatus(flaggerClient clientset.Interface, cd *flaggerv1.Canary, s
 		cdCopy.Status.FailedChecks = status.FailedChecks
 		cdCopy.Status.Iterations = status.Iterations
 		cdCopy.Status.LastAppliedSpec = hash
+		cdCopy.Status.LastBuildId = buildId
 		if status.Phase == flaggerv1.CanaryPhaseInitialized {
 			cdCopy.Status.LastPromotedSpec = hash
 		}
