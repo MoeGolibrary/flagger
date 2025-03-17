@@ -1361,6 +1361,9 @@ spec:
                   additionalProperties:
                     type: string
                   type: object
+                lastBuildId:
+                  description: LastBuildId of this workload
+                  type: string
                 lastAppliedSpec:
                   description: LastAppliedSpec of this canary
                   type: string
