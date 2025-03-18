@@ -818,7 +818,7 @@ func (c *Controller) shouldSkipAnalysis(canary *flaggerv1.Canary, canaryControll
 		c.recordEventWarningf(canary, "Skip Canary %s.%s manual webhook invoked", canary.Name, canary.Namespace)
 		c.alert(canary, fmt.Sprintf("Skip Canary %s.%s manual webhook invoked", canary.Name, canary.Namespace), false, flaggerv1.SeverityError)
 	}
-	if !skipAnalysis || !skipCanary {
+	if !skipAnalysis && !skipCanary {
 		return false
 	}
 
