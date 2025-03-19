@@ -109,16 +109,27 @@ func CallEventWebhook(r *flaggerv1.Canary, w flaggerv1.CanaryWebhook, message, e
 	t := time.Now()
 
 	payload := flaggerv1.CanaryWebhookPayload{
-		Name:      r.Name,
-		Namespace: r.Namespace,
-		Phase:     r.Status.Phase,
-		Checksum:  canaryChecksum(*r),
-		BuildId:   r.Status.LastBuildId,
-		Type:      w.Type,
+		Name:          r.Name,
+		Namespace:     r.Namespace,
+		Phase:         r.Status.Phase,
+		Checksum:      canaryChecksum(*r),
+		BuildId:       r.Status.LastBuildId,
+		Type:          w.Type,
+		FailedChecks:  r.Status.FailedChecks,
+		CanaryWeight:  r.Status.CanaryWeight,
+		Iterations:    r.Status.Iterations,
+		RemainingTime: r.GetRemainingTime(),
 		Metadata: map[string]string{
-			"eventMessage": message,
-			"eventType":    eventtype,
-			"timestamp":    strconv.FormatInt(t.UnixNano()/1000000, 10),
+			"eventMessage":     message,
+			"eventType":        eventtype,
+			"timestamp":        strconv.FormatInt(t.UnixNano()/1000000, 10),
+			"phase":            string(r.Status.Phase),
+			"failedChecks":     strconv.Itoa(r.Status.FailedChecks),
+			"canaryWeight":     strconv.Itoa(r.Status.CanaryWeight),
+			"iterations":       strconv.Itoa(r.Status.Iterations),
+			"lastBuildId":      r.Status.LastBuildId,
+			"lastAppliedSpec":  r.Status.LastAppliedSpec,
+			"lastPromotedSpec": r.Status.LastPromotedSpec,
 		},
 	}
 

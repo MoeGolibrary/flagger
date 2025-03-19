@@ -425,6 +425,11 @@ type CanaryWebhookPayload struct {
 	// Type
 	Type HookType `json:"type"`
 
+	FailedChecks  int           `json:"failedChecks"`
+	CanaryWeight  int           `json:"canaryWeight"`
+	Iterations    int           `json:"iterations"`
+	RemainingTime time.Duration `json:"remainingTime"`
+
 	// Metadata (key-value pairs) for this webhook
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
@@ -628,4 +633,16 @@ func (c *Canary) SkipAnalysis() bool {
 		return true
 	}
 	return c.Spec.SkipAnalysis
+}
+
+// GetRemainingTime returns the remaining time for the canary analysis
+func (c *Canary) GetRemainingTime() time.Duration {
+	if c.Status.Phase == CanaryPhaseProgressing {
+		if c.Spec.Analysis.StepWeight != 0 {
+			return c.GetAnalysisInterval() * time.Duration((c.Spec.Analysis.MaxWeight-c.Status.CanaryWeight)/c.Spec.Analysis.StepWeight)
+		} else if c.Spec.Analysis.Iterations != 0 {
+			return c.GetAnalysisInterval() * time.Duration(c.Spec.Analysis.Iterations-c.Status.Iterations)
+		}
+	}
+	return 0
 }
