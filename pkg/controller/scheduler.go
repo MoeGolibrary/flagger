@@ -326,6 +326,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 			}
 			return
 		}
+		c.recordEventInfof(cd, "Primary workload is readying")
 	}
 
 	// get the routing settings
@@ -344,7 +345,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// check if canary revision changed during analysis
 	if restart := c.hasCanaryRevisionChanged(cd, canaryController); restart {
-		c.recordEventInfof(cd, "New revision detected! Restarting Canary analysis for %s.%s",
+		c.recordEventWarningf(cd, "New revision detected! Restarting Canary analysis for %s.%s",
 			cd.Spec.TargetRef.Name, cd.Namespace)
 		c.alert(cd, fmt.Sprintf("New revision detected! Restarting Canary analysis for %s.%s",
 			cd.Spec.TargetRef.Name, cd.Namespace),
@@ -367,6 +368,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		}
 		if err := canaryController.SyncStatus(cd, status); err != nil {
 			c.recordEventWarningf(cd, "%v", err)
+		} else {
+			c.recordEventInfof(cd, "Canary analysis restarted for %s.%s", cd.Name, cd.Namespace)
 		}
 		return
 	}
@@ -468,6 +471,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		if ok := c.runPreRolloutHooks(cd); !ok {
 			if err := canaryController.SetStatusFailedChecks(cd, cd.Status.FailedChecks+1); err != nil {
 				c.recordEventWarningf(cd, "%v", err)
+			} else {
+				c.recordEventInfof(cd, "Pre-rollout webhooks error")
 			}
 			return
 		}
@@ -485,6 +490,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 			}
 			if err := canaryController.SetStatusFailedChecks(cd, cd.Status.FailedChecks+1); err != nil {
 				c.recordEventWarningf(cd, "%v", err)
+			} else {
+				c.recordEventWarningf(cd, "Analysis failed: %v", err)
 			}
 			return
 		}
@@ -556,6 +563,8 @@ func (c *Controller) runPromotionTrafficShift(canary *flaggerv1.Canary, canaryCo
 		c.recorder.SetWeight(canary, c.totalWeight(canary), 0)
 		if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseFinalising); err != nil {
 			c.recordEventWarningf(canary, "%v", err)
+		} else {
+			c.recordEventInfof(canary, "Promotion completed! Routing all traffic to primary. %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
 		}
 		return
 	}
@@ -581,10 +590,14 @@ func (c *Controller) runPromotionTrafficShift(canary *flaggerv1.Canary, canaryCo
 		if primaryWeight == c.totalWeight(canary) {
 			if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseFinalising); err != nil {
 				c.recordEventWarningf(canary, "%v", err)
+			} else {
+				c.recordEventInfof(canary, "Promotion completed! Routing all traffic to primary. %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
 			}
 		} else {
 			if err := canaryController.SetStatusWeight(canary, canaryWeight); err != nil {
 				c.recordEventWarningf(canary, "%v", err)
+			} else {
+				c.recordEventInfof(canary, "Advance %s.%s canary weight %v", canary.Name, canary.Namespace, canaryWeight)
 			}
 		}
 	}
@@ -665,6 +678,8 @@ func (c *Controller) runCanary(canary *flaggerv1.Canary, canaryController canary
 		if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhasePromoting); err != nil {
 			c.recordEventWarningf(canary, "%v", err)
 			return
+		} else {
+			c.recordEventInfof(canary, "Promoting %s.%s to primary", canary.Spec.TargetRef.Name, canary.Namespace)
 		}
 	}
 }
@@ -708,6 +723,8 @@ func (c *Controller) runAB(canary *flaggerv1.Canary, canaryController canary.Con
 		if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhasePromoting); err != nil {
 			c.recordEventWarningf(canary, "%v", err)
 			return
+		} else {
+			c.recordEventInfof(canary, "Promoting %s.%s to primary", canary.Spec.TargetRef.Name, canary.Namespace)
 		}
 	}
 }
@@ -763,6 +780,8 @@ func (c *Controller) runBlueGreen(canary *flaggerv1.Canary, canaryController can
 			c.recordEventWarningf(canary, "%v", err)
 			return
 		}
+		c.recordEventInfof(canary, "Advance %s.%s canary iteration %v/%v",
+			canary.Name, canary.Namespace, canary.Status.Iterations+1, canary.GetAnalysis().Iterations)
 		return
 	}
 
@@ -779,6 +798,8 @@ func (c *Controller) runBlueGreen(canary *flaggerv1.Canary, canaryController can
 		if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhasePromoting); err != nil {
 			c.recordEventWarningf(canary, "%v", err)
 			return
+		} else {
+			c.recordEventInfof(canary, "Promoting %s.%s to primary", canary.Spec.TargetRef.Name, canary.Namespace)
 		}
 	}
 
@@ -965,6 +986,8 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 				With("canary_name", canary.Name).
 				With("canary_namespace", canary.Namespace).Errorf("%v", err)
 			return false
+		} else {
+			c.recordEventInfof(canary, "Scaled up %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
 		}
 		c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseProgressing)
 		return false
@@ -1027,6 +1050,8 @@ func (c *Controller) rollback(canary *flaggerv1.Canary, canaryController canary.
 			With("canary_name", canary.Name).
 			With("canary_namespace", canary.Namespace).Errorf("%v", err)
 		return
+	} else {
+		c.recordEventInfof(canary, "Canary Failed. Scaled down %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
 	}
 
 	c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseFailed)

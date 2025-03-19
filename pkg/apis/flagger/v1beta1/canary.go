@@ -637,12 +637,28 @@ func (c *Canary) SkipAnalysis() bool {
 
 // GetRemainingTime returns the remaining time for the canary analysis
 func (c *Canary) GetRemainingTime() time.Duration {
-	if c.Status.Phase == CanaryPhaseProgressing {
-		if c.Spec.Analysis.StepWeight != 0 {
-			return c.GetAnalysisInterval() * time.Duration((c.Spec.Analysis.MaxWeight-c.Status.CanaryWeight)/c.Spec.Analysis.StepWeight)
-		} else if c.Spec.Analysis.Iterations != 0 {
-			return c.GetAnalysisInterval() * time.Duration(c.Spec.Analysis.Iterations-c.Status.Iterations)
-		}
+	if c.Status.Phase != CanaryPhaseProgressing {
+		return 0
 	}
+
+	interval := c.GetAnalysisInterval()
+	if interval <= 0 {
+		return 0 // 确保间隔时间有效
+	}
+
+	if c.Spec.Analysis.StepWeight != 0 {
+		remainingSteps := (c.Spec.Analysis.MaxWeight - c.Status.CanaryWeight) / c.Spec.Analysis.StepWeight
+		if remainingSteps < 0 {
+			return 0 // 防止负值
+		}
+		return interval * time.Duration(remainingSteps)
+	} else if c.Spec.Analysis.Iterations != 0 {
+		remainingIterations := c.Spec.Analysis.Iterations - c.Status.Iterations
+		if remainingIterations < 0 {
+			return 0 // 防止负值
+		}
+		return interval * time.Duration(remainingIterations)
+	}
+
 	return 0
 }
