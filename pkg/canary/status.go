@@ -88,6 +88,9 @@ func setStatusFailedChecks(flaggerClient clientset.Interface, cd *flaggerv1.Cana
 
 		err = updateStatusWithUpgrade(flaggerClient, cdCopy)
 		firstTry = false
+		if err == nil {
+			cd.Status = cdCopy.Status
+		}
 		return
 	})
 	if err != nil {
@@ -112,6 +115,9 @@ func setStatusWeight(flaggerClient clientset.Interface, cd *flaggerv1.Canary, va
 
 		err = updateStatusWithUpgrade(flaggerClient, cdCopy)
 		firstTry = false
+		if err == nil {
+			cd.Status = cdCopy.Status
+		}
 		return
 	})
 	if err != nil {
@@ -137,6 +143,9 @@ func setStatusIterations(flaggerClient clientset.Interface, cd *flaggerv1.Canary
 
 		err = updateStatusWithUpgrade(flaggerClient, cdCopy)
 		firstTry = false
+		if err == nil {
+			cd.Status = cdCopy.Status
+		}
 		return
 	})
 
@@ -180,6 +189,9 @@ func setStatusPhase(flaggerClient clientset.Interface, cd *flaggerv1.Canary, pha
 
 		err = updateStatusWithUpgrade(flaggerClient, cdCopy)
 		firstTry = false
+		if err == nil {
+			cd.Status = cdCopy.Status
+		}
 		return
 	})
 	if err != nil {

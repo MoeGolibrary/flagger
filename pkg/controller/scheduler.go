@@ -326,7 +326,6 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 			}
 			return
 		}
-		c.recordEventInfof(cd, "Primary workload is readying")
 	}
 
 	// get the routing settings

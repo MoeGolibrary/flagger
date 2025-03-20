@@ -84,18 +84,39 @@ func callWebhook(webhook string, payload interface{}, timeout string, retries in
 
 // CallWebhook does a HTTP POST to an external service and
 // returns an error if the response status code is non-2xx
-func CallWebhook(canary flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flaggerv1.CanaryWebhook) error {
+func CallWebhook(r flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flaggerv1.CanaryWebhook) error {
+	t := time.Now()
+
 	payload := flaggerv1.CanaryWebhookPayload{
-		Name:      canary.Name,
-		Namespace: canary.Namespace,
-		Phase:     phase,
-		Checksum:  canaryChecksum(canary),
-		BuildId:   canary.Status.LastBuildId,
-		Type:      w.Type,
+		Name:          r.Name,
+		Namespace:     r.Namespace,
+		Phase:         phase,
+		Checksum:      canaryChecksum(r),
+		BuildId:       r.Status.LastBuildId,
+		Type:          w.Type,
+		FailedChecks:  r.Status.FailedChecks,
+		CanaryWeight:  r.Status.CanaryWeight,
+		Iterations:    r.Status.Iterations,
+		RemainingTime: r.GetRemainingTime(),
+		Metadata: map[string]string{
+			"timestamp":        strconv.FormatInt(t.UnixNano()/1000000, 10),
+			"phase":            string(r.Status.Phase),
+			"failedChecks":     strconv.Itoa(r.Status.FailedChecks),
+			"canaryWeight":     strconv.Itoa(r.Status.CanaryWeight),
+			"iterations":       strconv.Itoa(r.Status.Iterations),
+			"lastBuildId":      r.Status.LastBuildId,
+			"lastAppliedSpec":  r.Status.LastAppliedSpec,
+			"lastPromotedSpec": r.Status.LastPromotedSpec,
+		},
 	}
 
 	if w.Metadata != nil {
-		payload.Metadata = *w.Metadata
+		for key, value := range *w.Metadata {
+			if _, ok := payload.Metadata[key]; ok {
+				continue
+			}
+			payload.Metadata[key] = value
+		}
 	}
 
 	if len(w.Timeout) < 2 {
