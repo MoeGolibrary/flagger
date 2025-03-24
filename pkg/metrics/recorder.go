@@ -72,7 +72,7 @@ func NewRecorder(controller string, register bool) Recorder {
 		Subsystem: controller,
 		Name:      "canary_metric_analysis",
 		Help:      "Last canary analysis result per metric",
-	}, []string{"canary_name", "primary_name", "canary_namespace", "canary_metric"})
+	}, []string{"canary_name", "primary_name", "canary_namespace", "canary_metric", "canary_metric_type"})
 
 	if register {
 		prometheus.MustRegister(info)
@@ -108,8 +108,18 @@ func (cr *Recorder) SetTotal(namespace string, total int) {
 	cr.total.WithLabelValues(namespace).Set(float64(total))
 }
 
-func (cr *Recorder) SetAnalysis(cd *flaggerv1.Canary, metricTemplateName string, val float64) {
-	cr.analysis.WithLabelValues(cd.Spec.TargetRef.Name, fmt.Sprintf("%s-primary", cd.Spec.TargetRef.Name), cd.Namespace, metricTemplateName).Set(val)
+// SetAnalysis sets the last known canary analysis status and metrics
+func (cr *Recorder) SetAnalysis(cd *flaggerv1.Canary, metric flaggerv1.CanaryMetric, val float64) {
+	cr.analysis.WithLabelValues(cd.Spec.TargetRef.Name, fmt.Sprintf("%s-primary", cd.Spec.TargetRef.Name), cd.Namespace, metric.Name, "value").Set(val)
+	if metric.ThresholdRange != nil {
+		// min and max
+		if metric.ThresholdRange.Min != nil {
+			cr.analysis.WithLabelValues(cd.Spec.TargetRef.Name, fmt.Sprintf("%s-primary", cd.Spec.TargetRef.Name), cd.Namespace, metric.Name, "min").Set(*metric.ThresholdRange.Min)
+		}
+		if metric.ThresholdRange.Max != nil {
+			cr.analysis.WithLabelValues(cd.Spec.TargetRef.Name, fmt.Sprintf("%s-primary", cd.Spec.TargetRef.Name), cd.Namespace, metric.Name, "max").Set(*metric.ThresholdRange.Max)
+		}
+	}
 }
 
 // SetStatus sets the last known canary analysis status

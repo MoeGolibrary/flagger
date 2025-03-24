@@ -298,7 +298,7 @@ func (c *Controller) runMetricChecks(canary *flaggerv1.Canary) (bool, error) {
 				return false, err
 			}
 
-			c.recorder.SetAnalysis(canary, metric.Name, val)
+			c.recorder.SetAnalysis(canary, metric, val)
 
 			if metric.ThresholdRange != nil {
 				tr := *metric.ThresholdRange

@@ -22,6 +22,14 @@ import (
 	"net/url"
 )
 
+type Style string
+
+const (
+	StyleDefault Style = ""
+	StylePrimary Style = "primary"
+	StyleDanger  Style = "danger"
+)
+
 // Slack holds the hook URL
 type Slack struct {
 	URL      string
@@ -58,10 +66,28 @@ type SlackField struct {
 }
 
 type SlackAction struct {
-	Type  string `json:"type"`
-	Text  string `json:"text"`
-	URL   string `json:"url"`
-	Style string `json:"style,omitempty"`
+	Type     string                   `json:"type"`
+	Text     *TextBlockObject         `json:"text"`
+	ActionID string                   `json:"action_id,omitempty"`
+	URL      string                   `json:"url,omitempty"`
+	Value    string                   `json:"value,omitempty"`
+	Style    Style                    `json:"style,omitempty"`
+	Confirm  *ConfirmationBlockObject `json:"confirm,omitempty"`
+}
+
+type ConfirmationBlockObject struct {
+	Title   *TextBlockObject `json:"title"`
+	Text    *TextBlockObject `json:"text"`
+	Confirm *TextBlockObject `json:"confirm"`
+	Deny    *TextBlockObject `json:"deny,omitempty"`
+	Style   Style            `json:"style,omitempty"`
+}
+
+type TextBlockObject struct {
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	Emoji    *bool  `json:"emoji"`
+	Verbatim bool   `json:"verbatim,omitempty"`
 }
 
 // NewSlack validates the Slack URL and returns a Slack object
@@ -114,11 +140,60 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 		if f.Type == "link" {
 			actions = append(actions, SlackAction{
 				Type: "button",
-				Text: f.Name,
-				URL:  f.Value,
+				Text: &TextBlockObject{
+					Text: f.Name,
+				},
+				URL: f.Value,
 			})
 		}
 	}
+
+	// TODO 优化
+	actions = append(actions, SlackAction{
+		Type:     "button",
+		ActionID: "skip_canary",
+		Value:    "skip_canary",
+		Text: &TextBlockObject{
+			Text: "Skip Canary (Test)",
+		},
+		Style: "danger",
+		Confirm: &ConfirmationBlockObject{
+			Title: &TextBlockObject{
+				Text: "Are you sure?",
+			},
+			Text: &TextBlockObject{
+				Text: "This will skip the canary test.",
+			},
+			Confirm: &TextBlockObject{
+				Text: "Yes",
+			},
+			Deny: &TextBlockObject{
+				Text: "No",
+			},
+		},
+	}, SlackAction{
+		Type:     "button",
+		ActionID: "rollback_canary",
+		Value:    "rollback_canary",
+		Text: &TextBlockObject{
+			Text: "Rollback (Test)",
+		},
+		Style: "danger",
+		Confirm: &ConfirmationBlockObject{
+			Title: &TextBlockObject{
+				Text: "Are you sure?",
+			},
+			Text: &TextBlockObject{
+				Text: "This will rollback the canary test.",
+			},
+			Confirm: &TextBlockObject{
+				Text: "Yes",
+			},
+			Deny: &TextBlockObject{
+				Text: "No",
+			},
+		},
+	})
 
 	a := SlackAttachment{
 		Color:    color,
