@@ -75,6 +75,11 @@ type SlackAction struct {
 	Confirm  *ConfirmationBlockObject `json:"confirm,omitempty"`
 }
 
+// ConfirmationBlockObject defines a dialog that provides a confirmation step to
+// any interactive element. This dialog will ask the user to confirm their action by
+// offering a confirm and deny buttons.
+//
+// More Information: https://api.slack.com/reference/messaging/composition-objects#confirm
 type ConfirmationBlockObject struct {
 	Title   *TextBlockObject `json:"title"`
 	Text    *TextBlockObject `json:"text"`
@@ -83,6 +88,9 @@ type ConfirmationBlockObject struct {
 	Style   Style            `json:"style,omitempty"`
 }
 
+// TextBlockObject defines a text element object to be used with blocks
+//
+// More Information: https://api.slack.com/reference/messaging/composition-objects#text
 type TextBlockObject struct {
 	Type     string `json:"type"`
 	Text     string `json:"text"`
@@ -135,13 +143,16 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 			sfields = append(sfields, SlackField{f.Name, f.Value, false})
 		}
 	}
+	emoji := true
 	actions := make([]SlackAction, 0)
 	for _, f := range fields {
 		if f.Type == "link" {
 			actions = append(actions, SlackAction{
 				Type: "button",
 				Text: &TextBlockObject{
-					Text: f.Name,
+					Type:  "plain_text",
+					Text:  f.Name,
+					Emoji: &emoji,
 				},
 				URL: f.Value,
 			})
@@ -154,21 +165,31 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 		ActionID: "skip_canary",
 		Value:    "skip_canary",
 		Text: &TextBlockObject{
-			Text: "Skip Canary (Test)",
+			Type:  "plain_text",
+			Text:  "Skip Canary (Test)",
+			Emoji: &emoji,
 		},
 		Style: "danger",
 		Confirm: &ConfirmationBlockObject{
 			Title: &TextBlockObject{
-				Text: "Are you sure?",
+				Type:  "plain_text",
+				Text:  "Are you sure?",
+				Emoji: &emoji,
 			},
 			Text: &TextBlockObject{
-				Text: "This will skip the canary test.",
+				Type:  "plain_text",
+				Text:  "This will skip the canary test.",
+				Emoji: &emoji,
 			},
 			Confirm: &TextBlockObject{
-				Text: "Yes",
+				Type:  "plain_text",
+				Text:  "Yes",
+				Emoji: &emoji,
 			},
 			Deny: &TextBlockObject{
-				Text: "No",
+				Type:  "plain_text",
+				Text:  "No",
+				Emoji: &emoji,
 			},
 		},
 	}, SlackAction{
@@ -176,21 +197,31 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 		ActionID: "rollback_canary",
 		Value:    "rollback_canary",
 		Text: &TextBlockObject{
-			Text: "Rollback (Test)",
+			Type:  "plain_text",
+			Text:  "Rollback (Test)",
+			Emoji: &emoji,
 		},
 		Style: "danger",
 		Confirm: &ConfirmationBlockObject{
 			Title: &TextBlockObject{
-				Text: "Are you sure?",
+				Type:  "plain_text",
+				Text:  "Are you sure?",
+				Emoji: &emoji,
 			},
 			Text: &TextBlockObject{
-				Text: "This will rollback the canary test.",
+				Type:  "plain_text",
+				Text:  "This will rollback the canary test.",
+				Emoji: &emoji,
 			},
 			Confirm: &TextBlockObject{
-				Text: "Yes",
+				Type:  "plain_text",
+				Text:  "Yes",
+				Emoji: &emoji,
 			},
 			Deny: &TextBlockObject{
-				Text: "No",
+				Type:  "plain_text",
+				Text:  "No",
+				Emoji: &emoji,
 			},
 		},
 	})

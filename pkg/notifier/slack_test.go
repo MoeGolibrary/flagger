@@ -18,6 +18,7 @@ package notifier
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -37,6 +38,7 @@ func TestSlack_Post(t *testing.T) {
 		b, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 
+		fmt.Printf("received payload: %s", string(b))
 		var payload SlackPayload
 		err = json.Unmarshal(b, &payload)
 		require.NoError(t, err)
