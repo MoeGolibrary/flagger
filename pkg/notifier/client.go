@@ -58,6 +58,8 @@ func postMessage(address, token, proxy string, payload interface{}) error {
 
 	b := bytes.NewBuffer(data)
 
+	fmt.Printf("Sending notification to %s\nPayload: %s\n", address, string(data))
+
 	req, err := http.NewRequest("POST", address, b)
 	if err != nil {
 		return fmt.Errorf("http.NewRequest failed: %w", err)
