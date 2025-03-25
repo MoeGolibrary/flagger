@@ -17,17 +17,12 @@ limitations under the License.
 package notifier
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/slack-go/slack"
 	"net/url"
-)
-
-type Style string
-
-const (
-	StyleDefault Style = ""
-	StylePrimary Style = "primary"
-	StyleDanger  Style = "danger"
+	"strings"
 )
 
 // Slack holds the hook URL
@@ -37,65 +32,6 @@ type Slack struct {
 	ProxyURL string
 	Username string
 	Channel  string
-}
-
-// SlackPayload holds the channel and attachments
-type SlackPayload struct {
-	Channel     string            `json:"channel"`
-	Username    string            `json:"username"`
-	IconUrl     string            `json:"icon_url"`
-	IconEmoji   string            `json:"icon_emoji"`
-	Text        string            `json:"text,omitempty"`
-	Attachments []SlackAttachment `json:"attachments,omitempty"`
-}
-
-// SlackAttachment holds the markdown message body
-type SlackAttachment struct {
-	Color      string        `json:"color"`
-	AuthorName string        `json:"author_name"`
-	Text       string        `json:"text"`
-	MrkdwnIn   []string      `json:"mrkdwn_in"`
-	Fields     []SlackField  `json:"fields"`
-	Actions    []SlackAction `json:"actions"` // 新增 Actions 字段
-}
-
-type SlackField struct {
-	Title string `json:"title"`
-	Value string `json:"value"`
-	Short bool   `json:"short"`
-}
-
-type SlackAction struct {
-	Type     string                   `json:"type"`
-	Text     *TextBlockObject         `json:"text"`
-	ActionID string                   `json:"action_id,omitempty"`
-	URL      string                   `json:"url,omitempty"`
-	Value    string                   `json:"value,omitempty"`
-	Style    Style                    `json:"style,omitempty"`
-	Confirm  *ConfirmationBlockObject `json:"confirm,omitempty"`
-}
-
-// ConfirmationBlockObject defines a dialog that provides a confirmation step to
-// any interactive element. This dialog will ask the user to confirm their action by
-// offering a confirm and deny buttons.
-//
-// More Information: https://api.slack.com/reference/messaging/composition-objects#confirm
-type ConfirmationBlockObject struct {
-	Title   *TextBlockObject `json:"title"`
-	Text    *TextBlockObject `json:"text"`
-	Confirm *TextBlockObject `json:"confirm"`
-	Deny    *TextBlockObject `json:"deny,omitempty"`
-	Style   Style            `json:"style,omitempty"`
-}
-
-// TextBlockObject defines a text element object to be used with blocks
-//
-// More Information: https://api.slack.com/reference/messaging/composition-objects#text
-type TextBlockObject struct {
-	Type     string `json:"type"`
-	Text     string `json:"text"`
-	Emoji    *bool  `json:"emoji"`
-	Verbatim bool   `json:"verbatim,omitempty"`
 }
 
 // NewSlack validates the Slack URL and returns a Slack object
@@ -124,119 +60,102 @@ func NewSlack(address, token, proxyURL, username, channel string) (*Slack, error
 
 // Post Slack message
 func (s *Slack) Post(workload string, namespace string, message string, fields []Field, severity string) error {
-	payload := SlackPayload{
-		Channel:   s.Channel,
-		Username:  s.Username,
-		IconEmoji: ":rocket:",
-	}
 
-	color := "good"
-	if severity == "warn" {
-		color = "warning"
-	} else if severity == "error" {
-		color = "danger"
-	}
+	// Create blocks
+	blocks := make([]slack.Block, 0)
 
-	sfields := make([]SlackField, 0)
-	for _, f := range fields {
-		if f.Type != "link" {
-			sfields = append(sfields, SlackField{f.Name, f.Value, false})
-		}
-	}
-	emoji := true
-	actions := make([]SlackAction, 0)
-	for _, f := range fields {
-		if f.Type == "link" {
-			actions = append(actions, SlackAction{
-				Type: "button",
-				Text: &TextBlockObject{
-					Type:  "plain_text",
-					Text:  f.Name,
-					Emoji: &emoji,
-				},
-				URL: f.Value,
-			})
+	// add header block
+	headerBlock := slack.NewHeaderBlock(
+		slack.NewTextBlockObject("plain_text", fmt.Sprintf("[%s] %s | %s", severity, workload, namespace), false, false),
+	)
+	blocks = append(blocks, headerBlock)
+
+	// Add fields as context blocks
+	sfields := make([]*slack.TextBlockObject, 0)
+	// add fields workload and namespace
+	sfields = append(sfields, slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Workload:* %s", workload), false, false))
+	sfields = append(sfields, slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*Namespace:* %s", namespace), false, false))
+
+	if len(fields) > 0 {
+		for _, f := range fields {
+			if f.Type != "link" {
+				sfields = append(sfields, slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("*%s:* %s", f.Name, f.Value), false, false))
+			}
 		}
 	}
 
-	// TODO 优化
-	actions = append(actions, SlackAction{
-		Type:     "button",
-		ActionID: "skip_canary",
-		Value:    "skip_canary",
-		Text: &TextBlockObject{
-			Type:  "plain_text",
-			Text:  "Skip Canary (Test)",
-			Emoji: &emoji,
-		},
-		Style: "danger",
-		Confirm: &ConfirmationBlockObject{
-			Title: &TextBlockObject{
-				Type:  "plain_text",
-				Text:  "Are you sure?",
-				Emoji: &emoji,
-			},
-			Text: &TextBlockObject{
-				Type:  "plain_text",
-				Text:  "This will skip the canary test.",
-				Emoji: &emoji,
-			},
-			Confirm: &TextBlockObject{
-				Type:  "plain_text",
-				Text:  "Yes",
-				Emoji: &emoji,
-			},
-			Deny: &TextBlockObject{
-				Type:  "plain_text",
-				Text:  "No",
-				Emoji: &emoji,
-			},
-		},
-	}, SlackAction{
-		Type:     "button",
-		ActionID: "rollback_canary",
-		Value:    "rollback_canary",
-		Text: &TextBlockObject{
-			Type:  "plain_text",
-			Text:  "Rollback (Test)",
-			Emoji: &emoji,
-		},
-		Style: "danger",
-		Confirm: &ConfirmationBlockObject{
-			Title: &TextBlockObject{
-				Type:  "plain_text",
-				Text:  "Are you sure?",
-				Emoji: &emoji,
-			},
-			Text: &TextBlockObject{
-				Type:  "plain_text",
-				Text:  "This will rollback the canary test.",
-				Emoji: &emoji,
-			},
-			Confirm: &TextBlockObject{
-				Type:  "plain_text",
-				Text:  "Yes",
-				Emoji: &emoji,
-			},
-			Deny: &TextBlockObject{
-				Type:  "plain_text",
-				Text:  "No",
-				Emoji: &emoji,
-			},
-		},
-	})
+	// Add section block for message
+	sectionBlock := slack.NewSectionBlock(
+		slack.NewTextBlockObject("mrkdwn", message, false, false),
+		sfields,
+		nil,
+	)
+	blocks = append(blocks, sectionBlock)
 
-	a := SlackAttachment{
-		Color:    color,
-		Text:     fmt.Sprintf("Workload: %s | Namespace: %s \n", workload, namespace) + message,
-		MrkdwnIn: []string{"text"},
-		Fields:   sfields,
-		Actions:  actions, // 填充 Actions 字段
+	// Add actions as action block
+	if len(fields) > 0 {
+		var elements []slack.BlockElement
+		for _, f := range fields {
+			if f.Type == "link" {
+				elements = append(elements, slack.NewButtonBlockElement(
+					f.Name,
+					f.Name,
+					slack.NewTextBlockObject("plain_text", f.Name, false, false),
+				).WithURL(f.Value))
+			}
+		}
+
+		// 如果message以New revision detected开头
+		if strings.HasPrefix(message, "New revision detected") {
+			// Add additional buttons
+			elements = append(elements, slack.NewButtonBlockElement(
+				"skip_canary",
+				"skip_canary",
+				slack.NewTextBlockObject("plain_text", "Skip Canary (Test)", false, false),
+			).WithStyle(slack.StyleDanger).WithConfirm(
+				slack.NewConfirmationBlockObject(
+					slack.NewTextBlockObject("plain_text", "Are you sure?", false, false),
+					slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("This will skip the canary test.\n *Workload:* %s \n *Namespace:* %s \n",
+						workload, namespace), false, false),
+					slack.NewTextBlockObject("plain_text", "Yes", false, false),
+					slack.NewTextBlockObject("plain_text", "No", false, false),
+				),
+			))
+
+			elements = append(elements, slack.NewButtonBlockElement(
+				"rollback_canary",
+				"rollback_canary",
+				slack.NewTextBlockObject("plain_text", "Rollback (Test)", false, false),
+			).WithStyle(slack.StyleDanger).WithConfirm(
+				slack.NewConfirmationBlockObject(
+					slack.NewTextBlockObject("plain_text", "Are you sure?", false, false),
+					slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("This will rollback the canary test.\n *Workload:* %s \n *Namespace:* %s \n",
+						workload, namespace), false, false),
+					slack.NewTextBlockObject("plain_text", "Yes", false, false),
+					slack.NewTextBlockObject("plain_text", "No", false, false),
+				),
+			))
+		}
+
+		actionsBlock := slack.NewActionBlock(
+			"actions",
+			elements...,
+		)
+		blocks = append(blocks, actionsBlock)
 	}
 
-	payload.Attachments = []SlackAttachment{a}
+	msg := slack.WebhookMessage{
+		Blocks: &slack.Blocks{
+			BlockSet: blocks,
+		},
+	}
 
-	err := postMessage(s.URL, s.Token, s.ProxyURL, payload)
+	// 输出msg json
+	b, _ := json.Marshal(msg)
+	fmt.Printf("Slack WebhookMessage: %s \n", string(b))
+
+	err := slack.PostWebhook(s.URL, &msg)
+
 	if err != nil {
 		return fmt.Errorf("postMessage failed: %w", err)
 	}

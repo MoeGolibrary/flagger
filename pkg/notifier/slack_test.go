@@ -19,6 +19,7 @@ package notifier
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/slack-go/slack"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -39,13 +40,13 @@ func TestSlack_Post(t *testing.T) {
 		require.NoError(t, err)
 
 		fmt.Printf("received payload: %s", string(b))
-		var payload SlackPayload
+		var payload slack.WebhookMessage
 		err = json.Unmarshal(b, &payload)
 		require.NoError(t, err)
 
 		require.Equal(t, "podinfo.test", payload.Attachments[0].AuthorName)
 		require.Equal(t, 2, len(payload.Attachments[0].Fields))  // 只有两个文本字段
-		require.Equal(t, 1, len(payload.Attachments[0].Actions)) // 有一个链接字段
+		require.Equal(t, 3, len(payload.Attachments[0].Actions)) // 有一个链接字段
 
 		// 检查 Fields 字段
 		require.Equal(t, "name1", payload.Attachments[0].Fields[0].Title)
@@ -54,7 +55,7 @@ func TestSlack_Post(t *testing.T) {
 		require.Equal(t, "value2", payload.Attachments[0].Fields[1].Value)
 
 		// 检查 Actions 字段
-		require.Equal(t, "button", payload.Attachments[0].Actions[0].Type)
+		require.Equal(t, slack.ActionType("button"), payload.Attachments[0].Actions[0].Type)
 		require.Equal(t, "Link1", payload.Attachments[0].Actions[0].Text)
 		require.Equal(t, "http://baidu.com", payload.Attachments[0].Actions[0].URL)
 	}))
@@ -63,6 +64,6 @@ func TestSlack_Post(t *testing.T) {
 	slack, err := NewSlack(ts.URL, "", "", "test", "test")
 	require.NoError(t, err)
 
-	err = slack.Post("podinfo", "test", "test", fields, "error")
+	err = slack.Post("podinfo", "test", "New revision detected !test", fields, "error")
 	require.NoError(t, err)
 }

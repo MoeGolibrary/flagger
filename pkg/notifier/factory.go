@@ -48,10 +48,6 @@ func (f Factory) Notifier(provider string) (Interface, error) {
 	switch provider {
 	case "slack":
 		n, err = NewSlack(f.URL, f.Token, f.ProxyURL, f.Username, f.Channel)
-	case "discord":
-		n, err = NewDiscord(f.URL, f.ProxyURL, f.Username, f.Channel)
-	case "rocket":
-		n, err = NewRocket(f.URL, f.ProxyURL, f.Username, f.Channel)
 	case "msteams":
 		n, err = NewMSTeams(f.URL, f.ProxyURL)
 	case "gchat":
