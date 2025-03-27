@@ -1295,6 +1295,7 @@ spec:
                               - post-rollout
                               - event
                               - rollback
+                              - skip
                               - confirm-traffic-increase
                           muteAlert:
                             description: Mute all alerts for the webhook
@@ -1361,6 +1362,9 @@ spec:
                   additionalProperties:
                     type: string
                   type: object
+                lastBuildId:
+                  description: LastBuildId of this workload
+                  type: string
                 lastAppliedSpec:
                   description: LastAppliedSpec of this canary
                   type: string
