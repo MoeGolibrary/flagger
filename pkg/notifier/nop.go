@@ -18,6 +18,6 @@ package notifier
 
 type NopNotifier struct{}
 
-func (n *NopNotifier) Post(string, string, string, []Field, string) error {
+func (n *NopNotifier) Post(string, string, string, []Field, string, string) error {
 	return nil
 }

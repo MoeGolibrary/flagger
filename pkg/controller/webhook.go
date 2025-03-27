@@ -29,7 +29,6 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
-	"github.com/fluxcd/flagger/pkg/canary"
 )
 
 func callWebhook(webhook string, payload interface{}, timeout string, retries int) error {
@@ -91,7 +90,7 @@ func CallWebhook(r flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flaggerv1.Ca
 		Name:          r.Name,
 		Namespace:     r.Namespace,
 		Phase:         phase,
-		Checksum:      canaryChecksum(r),
+		Checksum:      r.CanaryChecksum(),
 		BuildId:       r.Status.LastBuildId,
 		Type:          w.Type,
 		FailedChecks:  r.Status.FailedChecks,
@@ -133,7 +132,7 @@ func CallEventWebhook(r *flaggerv1.Canary, w flaggerv1.CanaryWebhook, message, e
 		Name:          r.Name,
 		Namespace:     r.Namespace,
 		Phase:         r.Status.Phase,
-		Checksum:      canaryChecksum(*r),
+		Checksum:      r.CanaryChecksum(),
 		BuildId:       r.Status.LastBuildId,
 		Type:          w.Type,
 		FailedChecks:  r.Status.FailedChecks,
@@ -163,16 +162,4 @@ func CallEventWebhook(r *flaggerv1.Canary, w flaggerv1.CanaryWebhook, message, e
 		}
 	}
 	return callWebhook(w.URL, payload, "5s", w.Retries)
-}
-
-func canaryChecksum(c flaggerv1.Canary) string {
-	canaryFields := struct {
-		TrackedConfigs  *map[string]string
-		LastAppliedSpec string
-	}{
-		c.Status.TrackedConfigs,
-		c.Status.LastAppliedSpec,
-	}
-
-	return canary.ComputeHash(canaryFields)
 }

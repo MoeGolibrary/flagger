@@ -150,9 +150,11 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		Type:  "link",
 	})
 
+	canaryId := canary.CanaryChecksum()
+
 	// send alert with the global notifier
 	if len(canary.GetAnalysis().Alerts) == 0 {
-		err := c.notifier.Post(canary.Name, canary.Namespace, message, fields, string(severity))
+		err := c.notifier.Post(canary.Name, canary.Namespace, message, fields, string(severity), canaryId)
 		if err != nil {
 			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
 				With("canary_name", canary.Name).
@@ -255,7 +257,7 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		}
 
 		// send alert
-		err = n.Post(canary.Name, canary.Namespace, message, fields, string(severity))
+		err = n.Post(canary.Name, canary.Namespace, message, fields, string(severity), canaryId)
 		if err != nil {
 			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
 				With("canary_name", canary.Name).

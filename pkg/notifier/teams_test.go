@@ -48,6 +48,6 @@ func TestTeams_Post(t *testing.T) {
 	teams, err := NewMSTeams(ts.URL, "")
 	require.NoError(t, err)
 
-	err = teams.Post("podinfo", "test", "test", fields, "info")
+	err = teams.Post("podinfo", "test", "test", fields, "info", "")
 	require.NoError(t, err)
 }

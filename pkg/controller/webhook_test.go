@@ -83,7 +83,7 @@ func TestCallWebhook(t *testing.T) {
 				"name":      "podinfo",
 				"namespace": "default",
 				"phase":     "Progressing",
-				"checksum":  canaryChecksum(canary),
+				"checksum":  canary.CanaryChecksum(),
 				"metadata": map[string]any{
 					"key1": "val1",
 				},
@@ -158,7 +158,7 @@ func TestCallEventWebhook(t *testing.T) {
 			return
 		}
 
-		if payload.Checksum != canaryChecksum(*canary) {
+		if payload.Checksum != canary.CanaryChecksum() {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -216,7 +216,7 @@ func TestCanaryChecksum(t *testing.T) {
 			LastAppliedSpec: "5f56684589",
 		},
 	}
-	canary1sum := canaryChecksum(canary1)
+	canary1sum := canary1.CanaryChecksum()
 
 	canary2 := flaggerv1.Canary{
 		ObjectMeta: metav1.ObjectMeta{
@@ -229,7 +229,7 @@ func TestCanaryChecksum(t *testing.T) {
 			LastAppliedSpec: "5f56684589",
 		},
 	}
-	canary2sum := canaryChecksum(canary2)
+	canary2sum := canary2.CanaryChecksum()
 
 	canary3 := flaggerv1.Canary{
 		ObjectMeta: metav1.ObjectMeta{
@@ -243,7 +243,7 @@ func TestCanaryChecksum(t *testing.T) {
 			LastAppliedSpec: "4cb74184589",
 		},
 	}
-	canary3sum := canaryChecksum(canary3)
+	canary3sum := canary3.CanaryChecksum()
 
 	canary4 := flaggerv1.Canary{
 		ObjectMeta: metav1.ObjectMeta{
@@ -255,9 +255,9 @@ func TestCanaryChecksum(t *testing.T) {
 			LastAppliedSpec: "4cb74184589",
 		},
 	}
-	canary4sum := canaryChecksum(canary4)
+	canary4sum := canary4.CanaryChecksum()
 
-	require.Equal(t, canary1sum, canaryChecksum(canary1))
+	require.Equal(t, canary1sum, canary1.CanaryChecksum())
 	require.NotEqual(t, canary1sum, canary2sum)
 	require.NotEqual(t, canary2sum, canary3sum)
 	require.NotEqual(t, canary3sum, canary1sum)

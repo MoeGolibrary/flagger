@@ -59,7 +59,7 @@ func NewSlack(address, token, proxyURL, username, channel string) (*Slack, error
 }
 
 // Post Slack message
-func (s *Slack) Post(workload string, namespace string, message string, fields []Field, severity string) error {
+func (s *Slack) Post(workload string, namespace string, message string, fields []Field, severity string, canaryId string) error {
 
 	// Create blocks
 	blocks := make([]slack.Block, 0)
@@ -107,10 +107,11 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 
 		// 如果message以New revision detected开头
 		if strings.HasPrefix(message, "New revision detected") {
+
 			// Add additional buttons
 			elements = append(elements, slack.NewButtonBlockElement(
 				"skip_canary",
-				"skip_canary",
+				canaryId,
 				slack.NewTextBlockObject("plain_text", "Skip Canary (Test)", false, false),
 			).WithStyle(slack.StyleDanger).WithConfirm(
 				slack.NewConfirmationBlockObject(
@@ -124,7 +125,7 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 
 			elements = append(elements, slack.NewButtonBlockElement(
 				"rollback_canary",
-				"rollback_canary",
+				canaryId,
 				slack.NewTextBlockObject("plain_text", "Rollback (Test)", false, false),
 			).WithStyle(slack.StyleDanger).WithConfirm(
 				slack.NewConfirmationBlockObject(

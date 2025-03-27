@@ -75,7 +75,7 @@ func NewGChat(hookURL string, proxyURL string) (*GChat, error) {
 }
 
 // Post Google Chat message
-func (s *GChat) Post(workload string, namespace string, message string, fields []Field, severity string) error {
+func (s *GChat) Post(workload string, namespace string, message string, fields []Field, severity string, canaryId string) error {
 	facts := make([]*GChatSections, 0, len(fields))
 	facts = append(facts, &GChatSections{
 		Widgets: []GChatWidgets{

@@ -19,6 +19,7 @@ package canary
 import (
 	"context"
 	"fmt"
+	"github.com/fluxcd/flagger/pkg/utils"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -32,7 +33,7 @@ import (
 func syncCanaryStatus(flaggerClient clientset.Interface, cd *flaggerv1.Canary,
 	status flaggerv1.CanaryStatus, canaryResource interface{}, buildId string,
 	setAll func(cdCopy *flaggerv1.Canary)) error {
-	hash := ComputeHash(canaryResource)
+	hash := utils.ComputeHash(canaryResource)
 
 	firstTry := true
 	name, ns := cd.GetName(), cd.GetNamespace()

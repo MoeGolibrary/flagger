@@ -48,6 +48,6 @@ func TestGChat_Post(t *testing.T) {
 	GChat, err := NewGChat(ts.URL, "")
 	require.NoError(t, err)
 
-	err = GChat.Post("podinfo", "test", "test", fields, "info")
+	err = GChat.Post("podinfo", "test", "test", fields, "info", "build-id")
 	require.NoError(t, err)
 }

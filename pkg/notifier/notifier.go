@@ -17,7 +17,7 @@ limitations under the License.
 package notifier
 
 type Interface interface {
-	Post(workload string, namespace string, message string, fields []Field, severity string) error
+	Post(workload string, namespace string, message string, fields []Field, severity string, canaryId string) error
 }
 
 type Field struct {

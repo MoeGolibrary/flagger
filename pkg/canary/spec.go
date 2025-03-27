@@ -17,13 +17,8 @@ limitations under the License.
 package canary
 
 import (
-	"fmt"
-	"hash/fnv"
-
-	"github.com/davecgh/go-spew/spew"
-	"k8s.io/apimachinery/pkg/util/rand"
-
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
+	"github.com/fluxcd/flagger/pkg/utils"
 )
 
 // hasSpecChanged computes the hash of the spec and compares it with the
@@ -34,7 +29,7 @@ func hasSpecChanged(cd *flaggerv1.Canary, spec interface{}) (bool, error) {
 		return true, nil
 	}
 
-	newHash := ComputeHash(spec)
+	newHash := utils.ComputeHash(spec)
 
 	// do not trigger a canary deployment on manual rollback
 	if cd.Status.LastPromotedSpec == newHash {
@@ -46,20 +41,4 @@ func hasSpecChanged(cd *flaggerv1.Canary, spec interface{}) (bool, error) {
 	}
 
 	return false, nil
-}
-
-// ComputeHash returns a hash value calculated from a spec using the spew library
-// which follows pointers and prints actual values of the nested objects
-// ensuring the hash does not change when a pointer changes.
-func ComputeHash(spec interface{}) string {
-	hasher := fnv.New32a()
-	printer := spew.ConfigState{
-		Indent:         " ",
-		SortKeys:       true,
-		DisableMethods: true,
-		SpewKeys:       true,
-	}
-	printer.Fprintf(hasher, "%#v", spec)
-
-	return rand.SafeEncodeString(fmt.Sprint(hasher.Sum32()))
 }

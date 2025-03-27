@@ -64,6 +64,6 @@ func TestSlack_Post(t *testing.T) {
 	slack, err := NewSlack(ts.URL, "", "", "test", "test")
 	require.NoError(t, err)
 
-	err = slack.Post("podinfo", "test", "New revision detected !test", fields, "error")
+	err = slack.Post("podinfo", "test", "New revision detected !test", fields, "error", "canary-id")
 	require.NoError(t, err)
 }

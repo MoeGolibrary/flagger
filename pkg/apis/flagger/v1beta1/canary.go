@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	"fmt"
+	"github.com/fluxcd/flagger/pkg/utils"
 	"time"
 
 	"github.com/fluxcd/flagger/pkg/apis/gatewayapi/v1beta1"
@@ -661,4 +662,17 @@ func (c *Canary) GetRemainingTime() time.Duration {
 	}
 
 	return 0
+}
+
+// CanaryChecksum returns the canary id
+func (c *Canary) CanaryChecksum() string {
+	canaryFields := struct {
+		TrackedConfigs  *map[string]string
+		LastAppliedSpec string
+	}{
+		c.Status.TrackedConfigs,
+		c.Status.LastAppliedSpec,
+	}
+
+	return utils.ComputeHash(canaryFields)
 }
