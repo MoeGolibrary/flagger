@@ -24,27 +24,13 @@ import (
 
 type Factory struct{}
 
-func (factory Factory) Provider(metricInterval string, provider flaggerv1.MetricTemplateProvider,
+func (factory Factory) Provider(metricInterval string, metricHistoryWindow string, provider flaggerv1.MetricTemplateProvider,
 	credentials map[string][]byte, config *rest.Config, logger *zap.SugaredLogger) (Interface, error) {
 	switch provider.Type {
 	case "prometheus":
 		return NewPrometheusProvider(provider, credentials)
 	case "datadog":
-		return NewDatadogProvider(metricInterval, provider, credentials, logger)
-	case "cloudwatch":
-		return NewCloudWatchProvider(metricInterval, provider)
-	case "newrelic":
-		return NewNewRelicProvider(metricInterval, provider, credentials)
-	case "graphite":
-		return NewGraphiteProvider(provider, credentials)
-	case "stackdriver":
-		return NewStackDriverProvider(provider, credentials)
-	case "influxdb":
-		return NewInfluxdbProvider(provider, credentials)
-	case "dynatrace":
-		return NewDynatraceProvider(metricInterval, provider, credentials)
-	case "keptn":
-		return NewKeptnProvider(config)
+		return NewDatadogProvider(metricInterval, metricHistoryWindow, provider, credentials, logger)
 	default:
 		return NewPrometheusProvider(provider, credentials)
 	}

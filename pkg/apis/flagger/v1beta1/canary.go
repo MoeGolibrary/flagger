@@ -298,7 +298,7 @@ type CanaryMetric struct {
 	// Name of the metric
 	Name string `json:"name"`
 
-	// Interval represents the windows size
+	// Interval represents the window size
 	Interval string `json:"interval,omitempty"`
 
 	// Deprecated: Max value accepted for this metric (replaced by ThresholdRange)
@@ -307,6 +307,14 @@ type CanaryMetric struct {
 	// Range value accepted for this metric
 	// +optional
 	ThresholdRange *CanaryThresholdRange `json:"thresholdRange,omitempty"`
+
+	// ChangeThresholdRange defines the acceptable range for the change percentage of this metric
+	// +optional
+	ChangeThresholdRange *CanaryThresholdRange `json:"changeThresholdRange,omitempty"`
+
+	// HistoryWindow defines the time window for historical data (e.g., "1h", "5m")
+	// +optional
+	HistoryWindow string `json:"historyWindow,omitempty"`
 
 	// Deprecated: Prometheus query for this metric (replaced by TemplateRef)
 	// +optional

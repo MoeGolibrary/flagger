@@ -17,9 +17,12 @@ limitations under the License.
 package providers
 
 type Interface interface {
-	// RunQuery executes the query and converts the first result to float64
-	RunQuery(query string) (float64, error)
+	// ExecuteCurrentQuery runs the query for the current time range and returns the latest value
+	ExecuteCurrentQuery(query string) (float64, error)
 
-	// IsOnline calls the provider endpoint and returns an error if the API is unreachable
+	// GetPreviousMetricValue retrieves the metric value from a historical time window
+	GetPreviousMetricValue(query string) (float64, error)
+
+	// IsOnline checks if the metrics provider API is reachable
 	IsOnline() (bool, error)
 }

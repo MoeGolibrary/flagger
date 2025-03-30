@@ -72,7 +72,7 @@ func (ob *OsmObserver) GetRequestSuccessRate(model flaggerv1.MetricTemplateModel
 		return 0, fmt.Errorf("rendering query failed: %w", err)
 	}
 
-	value, err := ob.client.RunQuery(query)
+	value, err := ob.client.ExecuteCurrentQuery(query)
 	if err != nil {
 		return 0, fmt.Errorf("running query failed: %w", err)
 	}
@@ -86,7 +86,7 @@ func (ob *OsmObserver) GetRequestDuration(model flaggerv1.MetricTemplateModel) (
 		return 0, fmt.Errorf("rendering query failed: %w", err)
 	}
 
-	value, err := ob.client.RunQuery(query)
+	value, err := ob.client.ExecuteCurrentQuery(query)
 	if err != nil {
 		return 0, fmt.Errorf("running query failed: %w", err)
 	}

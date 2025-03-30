@@ -345,6 +345,11 @@ func (in *CanaryMetric) DeepCopyInto(out *CanaryMetric) {
 		*out = new(CanaryThresholdRange)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.ChangeThresholdRange != nil {
+		in, out := &in.ChangeThresholdRange, &out.ChangeThresholdRange
+		*out = new(CanaryThresholdRange)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.TemplateRef != nil {
 		in, out := &in.TemplateRef, &out.TemplateRef
 		*out = new(CrossNamespaceObjectReference)

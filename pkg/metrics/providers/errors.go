@@ -19,8 +19,9 @@ package providers
 import "errors"
 
 var (
-	ErrNoValuesFound          = errors.New("no values found")
-	ErrMultipleValuesReturned = errors.New("query returned multiple values")
-	ErrTooManyRequests        = errors.New("too many requests")
-	ErrSkipAnalysis           = errors.New("skip analysis")
+	ErrNoValuesFound                 = errors.New("no values found")
+	ErrMultipleValuesReturned        = errors.New("query returned multiple values")
+	ErrTooManyRequests               = errors.New("too many requests")
+	ErrSkipAnalysis                  = errors.New("skip analysis")
+	ErrHistoricalWindowNotConfigured = errors.New("historical time window not configured")
 )

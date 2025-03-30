@@ -140,7 +140,7 @@ func TestPrometheusProvider_RunQueryWithBasicAuth(t *testing.T) {
 		prom, err := NewPrometheusProvider(template.Spec.Provider, secret.Data)
 		require.NoError(t, err)
 
-		val, err := prom.RunQuery(template.Spec.Query)
+		val, err := prom.ExecuteCurrentQuery(template.Spec.Query)
 		require.NoError(t, err)
 
 		assert.Equal(t, float64(100), val)
@@ -175,7 +175,7 @@ func TestPrometheusProvider_RunQueryWithBasicAuth(t *testing.T) {
 			prom, err := NewPrometheusProvider(template.Spec.Provider, secret.Data)
 			require.NoError(t, err)
 
-			_, err = prom.RunQuery(template.Spec.Query)
+			_, err = prom.ExecuteCurrentQuery(template.Spec.Query)
 			require.True(t, errors.Is(err, ErrNoValuesFound))
 		})
 	}
@@ -208,7 +208,7 @@ func TestPrometheusProvider_RunQueryWithBasicAuth(t *testing.T) {
 			prom, err := NewPrometheusProvider(template.Spec.Provider, secret.Data)
 			require.NoError(t, err)
 
-			_, err = prom.RunQuery(template.Spec.Query)
+			_, err = prom.ExecuteCurrentQuery(template.Spec.Query)
 			require.True(t, errors.Is(err, ErrMultipleValuesReturned))
 		})
 	}
@@ -244,7 +244,7 @@ func TestPrometheusProvider_RunQueryWithBearerAuth(t *testing.T) {
 		prom, err := NewPrometheusProvider(template.Spec.Provider, secret.Data)
 		require.NoError(t, err)
 
-		val, err := prom.RunQuery(template.Spec.Query)
+		val, err := prom.ExecuteCurrentQuery(template.Spec.Query)
 		require.NoError(t, err)
 
 		assert.Equal(t, float64(100), val)

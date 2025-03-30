@@ -398,7 +398,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		cd.Status.Phase == flaggerv1.CanaryPhaseWaitingPromotion {
 		if ok := c.runRollbackHooks(cd, cd.Status.Phase); ok {
 			c.recordEventWarningf(cd, "Rolling back %s.%s manual webhook invoked", cd.Name, cd.Namespace)
-			c.alert(cd, fmt.Sprintf("Rolling back  %s.%s manual webhook invoked", cd.Name, cd.Namespace), false, flaggerv1.SeverityError)
+			c.alert(cd, fmt.Sprintf("Rolling back  %s.%s manual webhook invoked", cd.Name, cd.Namespace), false, flaggerv1.SeverityWarn)
 			c.rollback(cd, canaryController, meshRouter, scalerReconciler)
 			return
 		}
@@ -817,11 +817,6 @@ func (c *Controller) runAnalysis(canary *flaggerv1.Canary) (bool, error) {
 		}
 	}
 
-	//ok := c.runBuiltinMetricChecks(canary)
-	//if !ok {
-	//	return ok
-	//}
-
 	ok, err := c.runMetricChecks(canary)
 	if !ok {
 		return ok, err
@@ -836,7 +831,7 @@ func (c *Controller) shouldSkipAnalysis(canary *flaggerv1.Canary, canaryControll
 
 	if skipCanary = c.runSkipHooks(canary, canary.Status.Phase); skipCanary {
 		c.recordEventWarningf(canary, "Skip Canary %s.%s manual webhook invoked", canary.Name, canary.Namespace)
-		c.alert(canary, fmt.Sprintf("Skip Canary %s.%s manual webhook invoked", canary.Name, canary.Namespace), false, flaggerv1.SeverityError)
+		c.alert(canary, fmt.Sprintf("Skip Canary %s.%s manual webhook invoked", canary.Name, canary.Namespace), false, flaggerv1.SeverityWarn)
 	}
 	if !skipAnalysis && !skipCanary {
 		return false

@@ -1223,6 +1223,20 @@ spec:
                               max:
                                 description: Max value accepted for this metric
                                 type: number
+                          changeThresholdRange:
+                            description: Range accepted for the change percentage of this metric
+                            type: object
+                            properties:
+                              min:
+                                description: Min change percentage accepted for this metric
+                                type: number
+                              max:
+                                description: Max change percentage accepted for this metric
+                                type: number
+                          historyWindow:
+                            description: Time window for historical data (e.g., "1h", "5m")
+                            type: string
+                            pattern: "^[0-9]+(m|h)$"
                           query:
                             description: Prometheus query
                             type: string

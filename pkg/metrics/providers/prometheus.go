@@ -100,8 +100,8 @@ func NewPrometheusProvider(provider flaggerv1.MetricTemplateProvider, credential
 	return &prom, nil
 }
 
-// RunQuery executes the promQL query and returns the the first result as float64
-func (p *PrometheusProvider) RunQuery(query string) (float64, error) {
+// ExecuteCurrentQuery executes the promQL query and returns the the first result as float64
+func (p *PrometheusProvider) ExecuteCurrentQuery(query string) (float64, error) {
 	query = url.QueryEscape(p.trimQuery(query))
 	u, err := url.Parse(fmt.Sprintf("./api/v1/query?query=%s", query))
 	if err != nil {
@@ -168,9 +168,13 @@ func (p *PrometheusProvider) RunQuery(query string) (float64, error) {
 	return *value, nil
 }
 
+func (p *PrometheusProvider) GetPreviousMetricValue(_ string) (float64, error) {
+	return 0, ErrHistoricalWindowNotConfigured
+}
+
 // IsOnline run simple Prometheus query and returns an error if the API is unreachable
 func (p *PrometheusProvider) IsOnline() (bool, error) {
-	value, err := p.RunQuery(prometheusOnlineQuery)
+	value, err := p.ExecuteCurrentQuery(prometheusOnlineQuery)
 	if err != nil {
 		return false, fmt.Errorf("running query failed: %w", err)
 	}

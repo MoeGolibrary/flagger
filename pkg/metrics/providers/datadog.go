@@ -56,6 +56,7 @@ type DatadogProvider struct {
 	applicationKey           string
 	keys                     []datadogKey
 	fromDelta                int64
+	history                  int64
 	logger                   *zap.SugaredLogger
 	ra                       *rand.Rand
 }
@@ -74,6 +75,7 @@ type datadogResponse struct {
 // NewDatadogProvider takes a canary spec, a provider spec and the credentials map, and
 // returns a Datadog client ready to execute queries against the API
 func NewDatadogProvider(metricInterval string,
+	metricHistoryWindow string,
 	provider flaggerv1.MetricTemplateProvider,
 	credentials map[string][]byte,
 	logger *zap.SugaredLogger) (*DatadogProvider, error) {
@@ -117,12 +119,39 @@ func NewDatadogProvider(metricInterval string,
 	}
 
 	dd.fromDelta = int64(datadogFromDeltaMultiplierOnMetricInterval * md.Seconds())
+
+	if metricHistoryWindow != "" {
+		historyWindow, err := time.ParseDuration(metricHistoryWindow)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing metric history window: %w", err)
+		}
+		dd.history = int64(historyWindow.Seconds())
+
+	}
 	return &dd, nil
 }
 
-// RunQuery executes the datadog query against DatadogProvider.metricsQueryEndpoint
-// and returns the the first result as float64
-func (p *DatadogProvider) RunQuery(query string) (float64, error) {
+// ExecuteCurrentQuery executes the query for the current time window (now - fromDelta to now)
+func (p *DatadogProvider) ExecuteCurrentQuery(query string) (float64, error) {
+	now := time.Now().Unix()
+	return p.runQueryTimeRange(query,
+		strconv.FormatInt(now-p.fromDelta, 10),
+		strconv.FormatInt(now, 10))
+}
+
+// GetPreviousMetricValue retrieves the metric value from the configured historical time window
+func (p *DatadogProvider) GetPreviousMetricValue(query string) (float64, error) {
+	if p.history == 0 {
+		return 0, ErrHistoricalWindowNotConfigured
+	}
+	targetTime := time.Now().Unix() - p.history
+	return p.runQueryTimeRange(query,
+		strconv.FormatInt(targetTime-p.fromDelta, 10),
+		strconv.FormatInt(targetTime, 10))
+}
+
+// RunQueryTimeRange executes the datadog query against DatadogProvider.metricsQueryEndpoint
+func (p *DatadogProvider) runQueryTimeRange(query string, from, to string) (float64, error) {
 
 	req, err := http.NewRequest("GET", p.metricsQueryEndpoint, nil)
 	if err != nil {
@@ -134,11 +163,10 @@ func (p *DatadogProvider) RunQuery(query string) (float64, error) {
 	req.Header.Set(datadogAPIKeyHeaderKey, key.ApiKey)
 	req.Header.Set(datadogApplicationKeyHeaderKey, key.ApplicationKey)
 
-	now := time.Now().Unix()
 	q := req.URL.Query()
 	q.Add("query", query)
-	q.Add("from", strconv.FormatInt(now-p.fromDelta, 10))
-	q.Add("to", strconv.FormatInt(now, 10))
+	q.Add("from", from)
+	q.Add("to", to)
 	req.URL.RawQuery = q.Encode()
 	// Log the request details
 	p.logger.Debugf("Request URL: %s", req.URL.String())

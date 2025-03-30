@@ -55,7 +55,7 @@ func (ob *SkipperObserver) GetRequestSuccessRate(model flaggerv1.MetricTemplateM
 	logger, _ := logger.NewLoggerWithEncoding("debug", "json")
 	logger.Debugf("GetRequestSuccessRate: %s", query)
 
-	value, err := ob.client.RunQuery(query)
+	value, err := ob.client.ExecuteCurrentQuery(query)
 	if err != nil {
 		return 0, fmt.Errorf("running query failed: %w", err)
 	}
@@ -75,7 +75,7 @@ func (ob *SkipperObserver) GetRequestDuration(model flaggerv1.MetricTemplateMode
 	logger, _ := logger.NewLoggerWithEncoding("debug", "json")
 	logger.Debugf("GetRequestDuration: %s", query)
 
-	value, err := ob.client.RunQuery(query)
+	value, err := ob.client.ExecuteCurrentQuery(query)
 	if err != nil {
 		return 0, fmt.Errorf("running query failed: %w", err)
 	}
