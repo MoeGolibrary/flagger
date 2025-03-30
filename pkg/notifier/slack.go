@@ -66,7 +66,7 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 
 	// add header block
 	headerBlock := slack.NewHeaderBlock(
-		slack.NewTextBlockObject("plain_text", fmt.Sprintf("[%s] %s | %s", severity, workload, namespace), false, false),
+		slack.NewTextBlockObject("plain_text", fmt.Sprintf("[%s] %s | %s", strings.ToUpper(severity), workload, namespace), false, false),
 	)
 	blocks = append(blocks, headerBlock)
 

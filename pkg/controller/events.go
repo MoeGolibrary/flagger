@@ -140,20 +140,28 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		}
 	}
 
+	// add canary dashboard link
+	canaryURL := getCanaryURL(canary)
 	fields = append(fields, notifier.Field{
-		Name:  "DataDog Dashboard",
-		Value: getCanaryURL(canary),
+		Name:  "Canary Dashboard",
+		Value: canaryURL,
 		Type:  "link",
 	}, notifier.Field{
-		Name:  "Service Page",
+		Name:  "Datadog Service Page",
 		Value: getServiceURL(canary),
 		Type:  "link",
 	})
+	// set alert message
+	if severity == flaggerv1.SeverityError {
+		message = fmt.Sprintf("%s \n\n Please check the **Canary Dashboard**  to find out why error.\n", message)
+	}
 
+	// get canaryId
 	canaryId := ""
 	for _, canaryWebhook := range canary.GetAnalysis().Webhooks {
 		if canaryWebhook.Type == flaggerv1.SkipHook || canaryWebhook.Type == flaggerv1.RollbackHook {
 			canaryId = canary.CanaryChecksum()
+			break
 		}
 	}
 
