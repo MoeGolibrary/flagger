@@ -106,13 +106,13 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 		}
 
 		// 如果message以New revision detected开头
-		if strings.HasPrefix(message, "New revision detected") {
+		if canaryId != "" && strings.HasPrefix(message, "New revision detected") {
 
 			// Add additional buttons
 			elements = append(elements, slack.NewButtonBlockElement(
 				"skip_canary",
 				canaryId,
-				slack.NewTextBlockObject("plain_text", "Skip Canary (Test)", false, false),
+				slack.NewTextBlockObject("plain_text", "Skip Canary", false, false),
 			).WithStyle(slack.StyleDanger).WithConfirm(
 				slack.NewConfirmationBlockObject(
 					slack.NewTextBlockObject("plain_text", "Are you sure?", false, false),
@@ -126,7 +126,7 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 			elements = append(elements, slack.NewButtonBlockElement(
 				"rollback_canary",
 				canaryId,
-				slack.NewTextBlockObject("plain_text", "Rollback (Test)", false, false),
+				slack.NewTextBlockObject("plain_text", "Rollback", false, false),
 			).WithStyle(slack.StyleDanger).WithConfirm(
 				slack.NewConfirmationBlockObject(
 					slack.NewTextBlockObject("plain_text", "Are you sure?", false, false),

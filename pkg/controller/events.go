@@ -150,7 +150,12 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		Type:  "link",
 	})
 
-	canaryId := canary.CanaryChecksum()
+	canaryId := ""
+	for _, canaryWebhook := range canary.GetAnalysis().Webhooks {
+		if canaryWebhook.Type == flaggerv1.SkipHook || canaryWebhook.Type == flaggerv1.RollbackHook {
+			canaryId = canary.CanaryChecksum()
+		}
+	}
 
 	// send alert with the global notifier
 	if len(canary.GetAnalysis().Alerts) == 0 {
