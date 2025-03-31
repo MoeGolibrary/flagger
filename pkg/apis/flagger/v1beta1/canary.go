@@ -17,7 +17,6 @@ limitations under the License.
 package v1beta1
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/fluxcd/flagger/pkg/utils"
 	"time"
@@ -673,21 +672,15 @@ func (c *Canary) GetRemainingTime() time.Duration {
 	return 0
 }
 
-// CanaryChecksum returns the canary id
+// CanaryChecksum returns the canary checksum
 func (c *Canary) CanaryChecksum() string {
 	canaryFields := struct {
-		TrackedConfigs  map[string]string
+		TrackedConfigs  *map[string]string
 		LastAppliedSpec string
 	}{
-		TrackedConfigs:  *c.Status.TrackedConfigs,
+		TrackedConfigs:  c.Status.TrackedConfigs,
 		LastAppliedSpec: c.Status.LastAppliedSpec,
 	}
 
-	jsonData, err := json.Marshal(canaryFields)
-	if err != nil {
-		// 处理错误
-		return c.Status.LastAppliedSpec
-	}
-
-	return utils.ComputeHash(jsonData)
+	return utils.ComputeHash(canaryFields)
 }

@@ -346,9 +346,6 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	if restart := c.hasCanaryRevisionChanged(cd, canaryController); restart {
 		c.recordEventWarningf(cd, "New revision detected! Restarting Canary analysis for %s.%s",
 			cd.Spec.TargetRef.Name, cd.Namespace)
-		c.alert(cd, fmt.Sprintf("New revision detected! Restarting Canary analysis for %s.%s",
-			cd.Spec.TargetRef.Name, cd.Namespace),
-			true, flaggerv1.SeverityWarn)
 
 		// route all traffic back to primary
 		primaryWeight = c.totalWeight(cd)
@@ -368,9 +365,14 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		}
 		if err := canaryController.SyncStatus(cd, status); err != nil {
 			c.recordEventWarningf(cd, "%v", err)
+			return
 		} else {
 			c.recordEventInfof(cd, "Canary analysis restarted for %s.%s", cd.Name, cd.Namespace)
 		}
+		// send alert
+		c.alert(cd, fmt.Sprintf("New revision detected! Restarting Canary analysis for %s.%s",
+			cd.Spec.TargetRef.Name, cd.Namespace),
+			true, flaggerv1.SeverityWarn)
 		return
 	}
 
@@ -962,8 +964,6 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 		canaryPhaseProgressing := canary.DeepCopy()
 		canaryPhaseProgressing.Status.Phase = flaggerv1.CanaryPhaseProgressing
 		c.recordEventInfof(canaryPhaseProgressing, "New revision detected! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace)
-		c.alert(canaryPhaseProgressing, fmt.Sprintf("New revision detected, progressing canary analysis! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace),
-			true, flaggerv1.SeverityInfo)
 
 		if scalerReconciler != nil {
 			err = scalerReconciler.ResumeTargetScaler(canary)
@@ -985,6 +985,9 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 			c.recordEventInfof(canary, "Scaled up %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
 		}
 		c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseProgressing)
+		// send alert
+		c.alert(canary, fmt.Sprintf("New revision detected, progressing canary analysis! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace),
+			true, flaggerv1.SeverityInfo)
 		return false
 	}
 	return false

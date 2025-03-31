@@ -121,8 +121,11 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		startTime = metav1.Now()
 	}
 
-	from := startTime.Add(time.Minute*-10).Second() * 1000
-	to := startTime.Add(time.Hour).Second() * 1000
+	to := time.Now().Second() * 1000
+	from := startTime.Add(-time.Minute*30).Second() * 1000
+	if startTime.Add(time.Hour).Before(time.Now()) {
+		to = startTime.Add(time.Hour).Second() * 1000
+	}
 	canaryURL := getCanaryURL(canary, from, to)
 	serviceURL := getServiceURL(canary, from, to)
 
@@ -178,14 +181,15 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 
 	// send alert with the global notifier
 	if len(canary.GetAnalysis().Alerts) == 0 {
-		err := c.notifier.Post(canary.Name, canary.Namespace, message, fields, string(severity), canaryId)
-		if err != nil {
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Errorf("alert can't be sent: %v", err)
-			return
-		}
+		go func() {
+			err := c.notifier.Post(canary.Name, canary.Namespace, message, fields, string(severity), canaryId)
+			if err != nil {
+				c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+					With("canary_name", canary.Name).
+					With("canary_namespace", canary.Namespace).
+					Errorf("alert can't be sent: %v", err)
+			}
+		}()
 		return
 	}
 
@@ -281,13 +285,16 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		}
 
 		// send alert
-		err = n.Post(canary.Name, canary.Namespace, message, fields, string(severity), canaryId)
-		if err != nil {
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Errorf("alert provider $s.%s send error: %v", alert.ProviderRef.Name, providerNamespace, err)
-		}
+		go func() {
+			err := n.Post(canary.Name, canary.Namespace, message, fields, string(severity), canaryId)
+			if err != nil {
+				c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+					With("canary_name", canary.Name).
+					With("canary_namespace", canary.Namespace).
+					Errorf("alert provider %s.%s send error: %v", alert.ProviderRef.Name, providerNamespace, err)
+			}
+
+		}()
 
 	}
 }
@@ -607,7 +614,11 @@ func (c *Controller) barkMessage(email, message string) error {
 	}
 
 	body := bytes.NewReader(jsonBody)
-	http.Post("https://pearl.baobo.me/api/ci/notify", "application/json", body)
+	_, err = http.Post("https://pearl.baobo.me/api/ci/notify", "application/json", body)
+	if err != nil {
+		c.logger.Errorf("Failed to send bark message: %v", err)
+		return err
+	}
 	return nil
 }
 
