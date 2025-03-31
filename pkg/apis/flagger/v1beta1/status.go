@@ -88,5 +88,7 @@ type CanaryStatus struct {
 	// +optional
 	LastTransitionTime metav1.Time `json:"lastTransitionTime,omitempty"`
 	// +optional
+	LastStartTime metav1.Time `json:"lastStartTime,omitempty"`
+	// +optional
 	Conditions []CanaryCondition `json:"conditions,omitempty"`
 }

@@ -536,6 +536,7 @@ func (in *CanaryStatus) DeepCopyInto(out *CanaryStatus) {
 		}
 	}
 	in.LastTransitionTime.DeepCopyInto(&out.LastTransitionTime)
+	in.LastStartTime.DeepCopyInto(&out.LastStartTime)
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make([]CanaryCondition, len(*in))

@@ -360,10 +360,11 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 		// reset status
 		status := flaggerv1.CanaryStatus{
-			Phase:        flaggerv1.CanaryPhaseProgressing,
-			CanaryWeight: 0,
-			FailedChecks: 0,
-			Iterations:   0,
+			Phase:         flaggerv1.CanaryPhaseProgressing,
+			CanaryWeight:  0,
+			FailedChecks:  0,
+			Iterations:    0,
+			LastStartTime: metav1.Now(),
 		}
 		if err := canaryController.SyncStatus(cd, status); err != nil {
 			c.recordEventWarningf(cd, "%v", err)
@@ -975,7 +976,7 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 			c.recordEventErrorf(canary, "%v", err)
 			return false
 		}
-		if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseProgressing}); err != nil {
+		if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseProgressing, LastStartTime: metav1.Now()}); err != nil {
 			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
 				With("canary_name", canary.Name).
 				With("canary_namespace", canary.Namespace).Errorf("%v", err)

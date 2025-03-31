@@ -100,6 +100,7 @@ func (c *Controller) sendEventToWebhook(r *flaggerv1.Canary, eventType, template
 }
 
 func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bool, severity flaggerv1.AlertSeverity) {
+
 	var fields []notifier.Field
 
 	if c.clusterName != "" {
@@ -114,10 +115,21 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 	if metadata {
 		fields = append(fields, alertMetadata(canary)...)
 	}
+
+	startTime := canary.Status.LastStartTime
+	if startTime.IsZero() {
+		startTime = metav1.Now()
+	}
+
+	from := startTime.Add(time.Minute*-10).Second() * 1000
+	to := startTime.Add(time.Hour).Second() * 1000
+	canaryURL := getCanaryURL(canary, from, to)
+	serviceURL := getServiceURL(canary, from, to)
+
 	if c.sendAt {
 		var err error
 		var githubUrl, githubActionUrl string
-		message, githubUrl, githubActionUrl, err = c.getCommitters(canary, message, severity)
+		message, githubUrl, githubActionUrl, err = c.getCommitters(canary, message, severity, canaryURL, serviceURL)
 		if err != nil {
 			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
 				With("canary_name", canary.Name).
@@ -141,14 +153,13 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 	}
 
 	// add canary dashboard link
-	canaryURL := getCanaryURL(canary)
 	fields = append(fields, notifier.Field{
 		Name:  "Canary Dashboard",
 		Value: canaryURL,
 		Type:  "link",
 	}, notifier.Field{
 		Name:  "Datadog Service Page",
-		Value: getServiceURL(canary),
+		Value: serviceURL,
 		Type:  "link",
 	})
 	// set alert message
@@ -283,12 +294,8 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 
 // https://docs.datadoghq.com/api/
 const (
-	dashboardBaseURL = "https://us5.datadoghq.com/dashboard/5pp-9u8-u3i/moego-canary"
-	queryParams      = "?fromUser=false&refresh_mode=sliding&live=true"
-	tplVarCanary     = "tpl_var_canary%5B0%5D="
-	tplVarNamespace  = "tpl_var_namespace%5B0%5D="
-	tplVarPrimary    = "tpl_var_primary%5B0%5D="
-
+	dashboardTemplateURL           = "https://us5.datadoghq.com/dashboard/5pp-9u8-u3i/moego-canary?tpl_var_namespace%%5B0%%5D=%s&tpl_var_canary%%5B0%%5D=%s&tpl_var_primary%%5B0%%5D=%s&from_ts=%d&to_ts=%d"
+	serviceTemplateURL             = "https://us5.datadoghq.com/apm/entity/service%%3A%s?env=%s&start=%d&end=%d"
 	datadogKeysSecretKey           = "datadog_keys"
 	datadogAPIKeyHeaderKey         = "DD-API-KEY"
 	datadogApplicationKeyHeaderKey = "DD-APPLICATION-KEY"
@@ -384,7 +391,7 @@ func (c *Controller) initDatadogKeys() error {
 	return nil
 }
 
-func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, severity flaggerv1.AlertSeverity) (string, string, string, error) {
+func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, severity flaggerv1.AlertSeverity, canaryURL, serviceURL string) (string, string, string, error) {
 	targetMessage := message
 	var githubUrl, githubActionUrl string
 
@@ -474,8 +481,8 @@ func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, sev
 					message,
 					attributes.Git.RepositoryUrl,
 					attributes.Ci.Pipeline.Url,
-					getCanaryURL(canary),
-					getServiceURL(canary),
+					canaryURL,
+					serviceURL,
 				)
 
 				go c.barkMessage(attributes.Git.Commit.Author.Email, barkMessageContent)
@@ -516,27 +523,24 @@ func getEmojiMsg(severity flaggerv1.AlertSeverity) string {
 	}
 }
 
-func getCanaryURL(canary *flaggerv1.Canary) string {
+func getCanaryURL(canary *flaggerv1.Canary, from, to int) string {
 	return fmt.Sprintf(
-		"%s%s&%s%s&%s%s&%s%s-primary",
-		dashboardBaseURL,
-		queryParams,
-		tplVarCanary,
+		dashboardTemplateURL,
 		canary.GetName(),
-		tplVarNamespace,
 		canary.GetNamespace(),
-		tplVarPrimary,
 		canary.GetName(),
+		from,
+		to,
 	)
 }
 
-func getServiceURL(canary *flaggerv1.Canary) string {
-	const serviceURL = "https://us5.datadoghq.com/apm/entity/service%3A"
+func getServiceURL(canary *flaggerv1.Canary, from, to int) string {
 	return fmt.Sprintf(
-		"%s%s?env=%s",
-		serviceURL,
+		serviceTemplateURL,
 		canary.GetName(),
 		canary.GetNamespace(),
+		from,
+		to,
 	)
 }
 

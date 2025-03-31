@@ -1389,6 +1389,10 @@ spec:
                   description: LastTransitionTime of this canary
                   format: date-time
                   type: string
+                lastStartTime:
+                  description: Start time of the canary analysis
+                  format: date-time
+                  type: string
                 sessionAffinityCookie:
                   description: Session affinity cookie of the current canary run
                   type: string
