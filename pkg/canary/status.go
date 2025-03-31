@@ -64,6 +64,10 @@ func syncCanaryStatus(flaggerClient clientset.Interface, cd *flaggerv1.Canary,
 		}
 
 		err = updateStatusWithUpgrade(flaggerClient, cdCopy)
+		if err == nil {
+			cd.Status.LastStartTime = cdCopy.Status.LastStartTime
+			cd.Status.LastAppliedSpec = cdCopy.Status.LastAppliedSpec
+		}
 		firstTry = false
 		return
 	})
