@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"go.uber.org/zap/zapcore"
 	"sync"
 	"time"
 
@@ -287,34 +288,28 @@ func (c *Controller) syncHandler(key string) error {
 
 		if cd.Status.Phase != flaggerv1.CanaryPhaseTerminated {
 			if err := c.finalize(cd); err != nil {
-				c.logger.With("canary", fmt.Sprintf("%s.%s", cd.Name, cd.Namespace)).
-					With("canary_name", cd.Name).
-					With("canary_namespace", cd.Namespace).
-					Errorf("Unable to finalize canary: %v", err)
+				c.logCanaryEvent(cd, fmt.Sprintf("Unable to finalize canary: %v", err), zapcore.ErrorLevel)
 				return fmt.Errorf("unable to finalize to canary %s.%s error: %w", cd.Name, cd.Namespace, err)
 			}
 		}
 
 		// Remove finalizer from Canary
 		if err := c.removeFinalizer(cd); err != nil {
-			c.logger.With("canary", fmt.Sprintf("%s.%s", cd.Name, cd.Namespace)).
-				With("canary_name", cd.Name).
-				With("canary_namespace", cd.Namespace).
-				Errorf("Unable to remove finalizer for canary %s.%s error: %v", cd.Name, cd.Namespace, err)
+			c.logCanaryEvent(cd, fmt.Sprintf("unable to remove finalizer for canary %s.%s: %v", cd.Name, cd.Namespace, err), zapcore.ErrorLevel)
 			return fmt.Errorf("unable to remove finalizer for canary %s.%s: %w", cd.Name, cd.Namespace, err)
 		}
 
 		// record event
 		c.recordEventInfof(cd, "Terminated canary %s.%s", cd.Name, cd.Namespace)
 
-		c.logger.Infof("Canary %s.%s has been successfully processed and marked for deletion", cd.Name, cd.Namespace)
+		c.logCanaryEvent(cd, fmt.Sprintf("Canary %s.%s has been successfully processed and marked for deletion", cd.Name, cd.Namespace), zapcore.InfoLevel)
 		return nil
 	}
 
 	// set status condition for new canaries
 	if cd.Status.Conditions == nil {
 		if err := c.setPhaseInitializing(cd); err != nil {
-			c.logger.Errorf("%s unable to set initializing status: %v", key, err)
+			c.logCanaryEvent(cd, fmt.Sprintf("%s unable to set initializing status: %v", key, err), zapcore.ErrorLevel)
 			return fmt.Errorf("%s initializing error: %w", key, err)
 		}
 	}
@@ -383,4 +378,39 @@ func checkCustomResourceType(obj interface{}, logger *zap.SugaredLogger) (flagge
 
 func int32p(i int32) *int32 {
 	return &i
+}
+
+// logCanaryEvent logs a canary event
+func (c *Controller) logCanaryEvent(canary *flaggerv1.Canary, message string, level zapcore.Level) {
+	switch level {
+	case zapcore.InfoLevel:
+		c.logger.
+			With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			With("canary_name", canary.Name).
+			With("canary_namespace", canary.Namespace).
+			With("phase", canary.Status.Phase).
+			Infof("%s", message)
+	case zapcore.WarnLevel:
+		c.logger.
+			With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			With("canary_name", canary.Name).
+			With("canary_namespace", canary.Namespace).
+			With("phase", canary.Status.Phase).
+			Warnf("%s", message)
+
+	case zapcore.ErrorLevel:
+		c.logger.
+			With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			With("canary_name", canary.Name).
+			With("canary_namespace", canary.Namespace).
+			With("phase", canary.Status.Phase).
+			Errorf("%s", message)
+	default:
+		c.logger.
+			With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			With("canary_name", canary.Name).
+			With("canary_namespace", canary.Namespace).
+			With("phase", canary.Status.Phase).
+			Debugf("%s", message)
+	}
 }

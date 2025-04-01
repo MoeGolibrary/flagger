@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/fluxcd/flagger/pkg/metrics/providers"
+	"go.uber.org/zap/zapcore"
 	"strings"
 	"time"
 
@@ -111,7 +112,7 @@ func (c *Controller) scheduleCanaries() {
 				job.Stop()
 			} else {
 				// Avoid starting without metrics.
-				c.recorderMetrics(cn.Name, cn.Namespace)
+				c.recorderMetrics(cn)
 			}
 
 			newJob := CanaryJob{
@@ -273,10 +274,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// scale down the canary target to 0 replicas after the service is pointing to the primary target
 	if cd.Status.Phase == "" || cd.Status.Phase == flaggerv1.CanaryPhaseInitializing {
-		c.logger.With("canary", fmt.Sprintf("%s.%s", cd.Name, cd.Namespace)).
-			With("canary_name", cd.Name).
-			With("canary_namespace", cd.Namespace).
-			Infof("Scaling down %s %s.%s", cd.Spec.TargetRef.Kind, cd.Spec.TargetRef.Name, cd.Namespace)
+		c.logCanaryEvent(cd, fmt.Sprintf("Scaling down %s %s.%s", cd.Spec.TargetRef.Kind, cd.Spec.TargetRef.Name, cd.Namespace), zapcore.InfoLevel)
 		if err := canaryController.ScaleToZero(cd); err != nil {
 			c.recordEventWarningf(cd, "scaling down canary %s %s.%s failed: %v", cd.Spec.TargetRef.Kind, cd.Spec.TargetRef.Name, cd.Namespace, err)
 			return
@@ -368,6 +366,13 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 			return
 		} else {
 			c.recordEventInfof(cd, "Canary analysis restarted for %s.%s", cd.Name, cd.Namespace)
+		}
+		cd, err = c.flaggerClient.FlaggerV1beta1().Canaries(cd.Namespace).Get(context.TODO(), cd.Name, metav1.GetOptions{})
+		if err != nil {
+			c.logger.With("canary", fmt.Sprintf("%s.%s", cd.Name, cd.Namespace)).
+				With("canary_name", cd.Name).
+				With("canary_namespace", cd.Namespace).Errorf("%v", err)
+			return
 		}
 		// send alert
 		c.alert(cd, fmt.Sprintf("New revision detected! Restarting Canary analysis for %s.%s",
@@ -630,10 +635,7 @@ func (c *Controller) runCanary(canary *flaggerv1.Canary, canaryController canary
 				primaryWeight = c.totalWeight(canary) - nextStepWeight
 				canaryWeight = nextStepWeight
 			}
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Infof("Running mirror step %d/%d/%t", primaryWeight, canaryWeight, mirrored)
+			c.logCanaryEvent(canary, fmt.Sprintf("Mirror step %d/%d/%t", primaryWeight, canaryWeight, mirrored), zapcore.InfoLevel)
 		} else {
 
 			primaryWeight -= nextStepWeight
@@ -743,10 +745,7 @@ func (c *Controller) runBlueGreen(canary *flaggerv1.Canary, canaryController can
 			if err := meshRouter.SetRoutes(canary, c.totalWeight(canary), 0, true); err != nil {
 				c.recordEventWarningf(canary, "%v", err)
 			}
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Infof("Start traffic mirroring")
+			c.logCanaryEvent(canary, "Start traffic mirroring", zapcore.InfoLevel)
 		}
 		if err := canaryController.SetStatusIterations(canary, canary.Status.Iterations+1); err != nil {
 			c.recordEventWarningf(canary, "%v", err)
@@ -913,9 +912,7 @@ func (c *Controller) shouldAdvance(canary *flaggerv1.Canary, canaryController ca
 	// Make sure to sync lastAppliedSpec even if the canary is in a failed state.
 	if canary.Status.Phase == flaggerv1.CanaryPhaseFailed {
 		if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).Errorf("%v", err)
+			c.recordEventWarningf(canary, "Failed to sync canary status: %v", err)
 			return false, err
 		}
 	}
@@ -949,9 +946,7 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 	var err error
 	canary, err = c.flaggerClient.FlaggerV1beta1().Canaries(canary.Namespace).Get(context.TODO(), canary.Name, metav1.GetOptions{})
 	if err != nil {
-		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-			With("canary_name", canary.Name).
-			With("canary_namespace", canary.Namespace).Errorf("%v", err)
+		c.logCanaryEvent(canary, fmt.Sprintf("Failed get canary"), zapcore.ErrorLevel)
 		return false
 	}
 
@@ -977,15 +972,18 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 			return false
 		}
 		if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseProgressing, LastStartTime: metav1.Now()}); err != nil {
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).Errorf("%v", err)
+			c.logCanaryEvent(canary, fmt.Sprintf("Failed to update canary status"), zapcore.ErrorLevel)
 			return false
 		} else {
 			c.recordEventInfof(canary, "Scaled up %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
 		}
 		c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseProgressing)
 		// send alert
+		canary, err = c.flaggerClient.FlaggerV1beta1().Canaries(canary.Namespace).Get(context.TODO(), canary.Name, metav1.GetOptions{})
+		if err != nil {
+			c.logCanaryEvent(canary, fmt.Sprintf("Failed get canary"), zapcore.ErrorLevel)
+			return false
+		}
 		c.alert(canary, fmt.Sprintf("New revision detected, progressing canary analysis! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace),
 			true, flaggerv1.SeverityInfo)
 		return false
@@ -1044,9 +1042,7 @@ func (c *Controller) rollback(canary *flaggerv1.Canary, canaryController canary.
 
 	// mark canary as failed
 	if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseFailed, CanaryWeight: 0}); err != nil {
-		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-			With("canary_name", canary.Name).
-			With("canary_namespace", canary.Namespace).Errorf("%v", err)
+		c.logCanaryEvent(canary, fmt.Sprintf("Canary Failed. Scaled down %s.%s", canary.Spec.TargetRef.Name, canary.Namespace), zapcore.ErrorLevel)
 		return
 	} else {
 		c.recordEventInfof(canary, "Canary Failed. Scaled down %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
@@ -1109,13 +1105,14 @@ func (c *Controller) setPhaseInitializing(cd *flaggerv1.Canary) error {
 	return nil
 }
 
-func (c *Controller) recorderMetrics(name string, namespace string) {
+func (c *Controller) recorderMetrics(cd *flaggerv1.Canary) {
+	name := cd.GetName()
+	namespace := cd.GetNamespace()
 
 	// check if the canary exists
 	cd, err := c.flaggerClient.FlaggerV1beta1().Canaries(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
-		c.logger.With("canary", fmt.Sprintf("%s.%s", name, namespace)).
-			Errorf("Canary %s.%s not found", name, namespace)
+		c.logCanaryEvent(cd, fmt.Sprintf("Canary %s.%s not found", name, namespace), zapcore.ErrorLevel)
 		return
 	}
 

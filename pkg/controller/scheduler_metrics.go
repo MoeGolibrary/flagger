@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.uber.org/zap/zapcore"
 	"golang.org/x/time/rate"
 	"math/rand"
 	"time"
@@ -127,10 +128,8 @@ func (c *Controller) runMetricChecks(canary *flaggerv1.Canary) (bool, error) {
 			}
 
 			query, err := observers.RenderQuery(template.Spec.Query, toMetricModel(canary, metric.Interval, metric.TemplateVariables))
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Debugf("Metric template %s.%s query: %s", metric.TemplateRef.Name, namespace, query)
+			c.logCanaryEvent(canary, fmt.Sprintf("Metric template %s.%s query: %s", metric.TemplateRef.Name, namespace, query), zapcore.DebugLevel)
+
 			if err != nil {
 				c.recordEventErrorf(canary, "Metric template %s.%s query render error: %v",
 					metric.TemplateRef.Name, namespace, err)
@@ -272,10 +271,7 @@ func (c *Controller) ExecuteCurrentQuery(query string, canary *flaggerv1.Canary,
 			// Use the Canary's Interval for sleep
 			retryDelay := baseRetryDelay + time.Duration(ra.Intn(int(maxRetryDelay)))
 
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Debugf("Request Metrics error, try later, no: %d, retryDelay: %v", i, retryDelay)
+			c.logCanaryEvent(canary, fmt.Sprintf("Request Metrics error, try later, no: %d, retryDelay: %v", i, retryDelay), zapcore.DebugLevel)
 			time.Sleep(retryDelay)
 			if c.checkSkipAnalysis(canary) {
 				return 0, providers.ErrSkipAnalysis
@@ -311,10 +307,8 @@ func (c *Controller) GetPreviousMetricValue(query string, canary *flaggerv1.Cana
 			// Use the Canary's Interval for sleep
 			retryDelay := baseRetryDelay + time.Duration(ra.Intn(int(maxRetryDelay)))
 
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Debugf("Request Metrics error, try later, no: %d, retryDelay: %v", i, retryDelay)
+			c.logCanaryEvent(canary, fmt.Sprintf("Request Metrics error, try later, no: %d, retryDelay: %v", i, retryDelay), zapcore.DebugLevel)
+
 			time.Sleep(retryDelay)
 			if c.checkSkipAnalysis(canary) {
 				return 0, providers.ErrSkipAnalysis
@@ -329,17 +323,11 @@ func (c *Controller) GetPreviousMetricValue(query string, canary *flaggerv1.Cana
 func (c *Controller) checkSkipAnalysis(canary *flaggerv1.Canary) bool {
 	cd, err := c.flaggerClient.FlaggerV1beta1().Canaries(canary.Namespace).Get(context.TODO(), canary.Name, metav1.GetOptions{})
 	if err != nil {
-		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-			With("canary_name", canary.Name).
-			With("canary_namespace", canary.Namespace).
-			Errorf("Canary %s.%s not found", canary.Name, canary.Namespace)
+		c.logCanaryEvent(canary, fmt.Sprintf("Canary %s.%s not found", canary.Name, canary.Namespace), zapcore.ErrorLevel)
 		return false
 	}
 	if cd.SkipAnalysis() {
-		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-			With("canary_name", canary.Name).
-			With("canary_namespace", canary.Namespace).
-			Info("Skipping analysis")
+		c.logCanaryEvent(canary, "Skipping analysis", zapcore.InfoLevel)
 		return true
 	}
 	return false

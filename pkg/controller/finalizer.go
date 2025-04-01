@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.uber.org/zap/zapcore"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -103,14 +104,14 @@ func (c *Controller) finalize(old interface{}) error {
 	if err := router.Finalize(canary); err != nil {
 		return fmt.Errorf("failed revert router: %w", err)
 	}
-	c.logger.Infof("%s.%s router reverted", canary.Name, canary.Namespace)
+	c.logCanaryEvent(canary, fmt.Sprintf("%s.%s router reverted", canary.Name, canary.Namespace), zapcore.InfoLevel)
 
 	// Revert the mesh objects
 	if err := c.revertMesh(canary); err != nil {
 		return fmt.Errorf("failed to revert mesh: %w", err)
 	}
 
-	c.logger.Infof("Finalization complete for %s.%s", canary.Name, canary.Namespace)
+	c.logCanaryEvent(canary, fmt.Sprintf("Finalization complete for %s.%s", canary.Name, canary.Namespace), zapcore.InfoLevel)
 	return nil
 }
 
@@ -127,7 +128,7 @@ func (c *Controller) revertMesh(r *flaggerv1.Canary) error {
 		return fmt.Errorf("meshRouter.Finlize failed: %w", err)
 	}
 
-	c.logger.Infof("%s.%s mesh provider %s reverted", r.Name, r.Namespace, provider)
+	c.logCanaryEvent(r, fmt.Sprintf("%s.%s mesh provider %s reverted", r.Name, r.Namespace, provider), zapcore.InfoLevel)
 	return nil
 }
 

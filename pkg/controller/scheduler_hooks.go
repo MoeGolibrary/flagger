@@ -18,6 +18,7 @@ package controller
 
 import (
 	"fmt"
+	"go.uber.org/zap/zapcore"
 
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 	"github.com/fluxcd/flagger/pkg/canary"
@@ -48,9 +49,7 @@ func (c *Controller) runConfirmRolloutHooks(canary *flaggerv1.Canary, canaryCont
 			if err != nil {
 				if canary.Status.Phase != flaggerv1.CanaryPhaseWaiting {
 					if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseWaiting); err != nil {
-						c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-							With("canary_name", canary.Name).
-							With("canary_namespace", canary.Namespace).Errorf("%v", err)
+						c.logCanaryEvent(canary, fmt.Sprintf("%v", err), zapcore.ErrorLevel)
 					}
 					c.recordEventWarningf(canary, "Halt %s.%s advancement waiting for approval %s",
 						canary.Name, canary.Namespace, webhook.Name)
@@ -74,9 +73,7 @@ func (c *Controller) runConfirmPromotionHooks(canary *flaggerv1.Canary, canaryCo
 			if err != nil {
 				if canary.Status.Phase != flaggerv1.CanaryPhaseWaitingPromotion {
 					if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseWaitingPromotion); err != nil {
-						c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-							With("canary_name", canary.Name).
-							With("canary_namespace", canary.Namespace).Errorf("%v", err)
+						c.logCanaryEvent(canary, fmt.Sprintf("%v", err), zapcore.ErrorLevel)
 					}
 					c.recordEventWarningf(canary, "Halt %s.%s advancement waiting for promotion approval %s",
 						canary.Name, canary.Namespace, webhook.Name)

@@ -42,29 +42,19 @@ import (
 var ra = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func (c *Controller) recordEventInfof(r *flaggerv1.Canary, template string, args ...interface{}) {
-	c.logger.
-		With("canary", fmt.Sprintf("%s.%s", r.Name, r.Namespace)).
-		With("canary_name", r.Name).
-		With("canary_namespace", r.Namespace).
-		Infof(template, args...)
+	c.logCanaryEvent(r, fmt.Sprintf(template, args...), zapcore.InfoLevel)
 	c.eventRecorder.Event(r, corev1.EventTypeNormal, "Synced", fmt.Sprintf(template, args...))
 	c.sendEventToWebhook(r, corev1.EventTypeNormal, template, args)
 }
 
 func (c *Controller) recordEventErrorf(r *flaggerv1.Canary, template string, args ...interface{}) {
-	c.logger.With("canary", fmt.Sprintf("%s.%s", r.Name, r.Namespace)).
-		With("canary_name", r.Name).
-		With("canary_namespace", r.Namespace).
-		Errorf(template, args...)
+	c.logCanaryEvent(r, fmt.Sprintf(template, args...), zapcore.ErrorLevel)
 	c.eventRecorder.Event(r, corev1.EventTypeWarning, "Synced", fmt.Sprintf(template, args...))
 	c.sendEventToWebhook(r, corev1.EventTypeWarning, template, args)
 }
 
 func (c *Controller) recordEventWarningf(r *flaggerv1.Canary, template string, args ...interface{}) {
-	c.logger.With("canary", fmt.Sprintf("%s.%s", r.Name, r.Namespace)).
-		With("canary_name", r.Name).
-		With("canary_namespace", r.Namespace).
-		Infof(template, args...)
+	c.logCanaryEvent(r, fmt.Sprintf(template, args...), zapcore.WarnLevel)
 	c.eventRecorder.Event(r, corev1.EventTypeWarning, "Synced", fmt.Sprintf(template, args...))
 	c.sendEventToWebhook(r, corev1.EventTypeWarning, template, args)
 }
@@ -76,10 +66,7 @@ func (c *Controller) sendEventToWebhook(r *flaggerv1.Canary, eventType, template
 			webhookOverride = true
 			err := CallEventWebhook(r, canaryWebhook, fmt.Sprintf(template, args...), eventType)
 			if err != nil {
-				c.logger.With("canary", fmt.Sprintf("%s.%s", r.Name, r.Namespace)).
-					With("canary_name", r.Name).
-					With("canary_namespace", r.Namespace).
-					Errorf("error sending event to webhook: %s", err)
+				c.logCanaryEvent(r, fmt.Sprintf("error sending event to webhook: %s", err), zapcore.ErrorLevel)
 			}
 		}
 	}
@@ -91,10 +78,7 @@ func (c *Controller) sendEventToWebhook(r *flaggerv1.Canary, eventType, template
 		}
 		err := CallEventWebhook(r, hook, fmt.Sprintf(template, args...), eventType)
 		if err != nil {
-			c.logger.With("canary", fmt.Sprintf("%s.%s", r.Name, r.Namespace)).
-				With("canary_name", r.Name).
-				With("canary_namespace", r.Namespace).
-				Errorf("error sending event to webhook: %s", err)
+			c.logCanaryEvent(r, fmt.Sprintf("error sending event to webhook: %s", err), zapcore.ErrorLevel)
 		}
 	}
 }
@@ -134,10 +118,7 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		var githubUrl, githubActionUrl string
 		message, githubUrl, githubActionUrl, err = c.getCommitters(canary, message, severity, canaryURL, serviceURL)
 		if err != nil {
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Errorf("alert parse msg: %v", err)
+			c.logCanaryEvent(canary, fmt.Sprintf("alert parse msg: %v", err), zapcore.ErrorLevel)
 		}
 		if githubUrl != "" {
 			fields = append(fields, notifier.Field{
@@ -184,10 +165,7 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		go func() {
 			err := c.notifier.Post(canary.Name, canary.Namespace, message, fields, string(severity), canaryId)
 			if err != nil {
-				c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-					With("canary_name", canary.Name).
-					With("canary_namespace", canary.Namespace).
-					Errorf("alert can't be sent: %v", err)
+				c.logCanaryEvent(canary, fmt.Sprintf("alert can't be sent: %v", err), zapcore.ErrorLevel)
 			}
 		}()
 		return
@@ -220,10 +198,7 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		// find alert provider
 		provider, err := c.flaggerInformers.AlertInformer.Lister().AlertProviders(providerNamespace).Get(alert.ProviderRef.Name)
 		if err != nil {
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Errorf("alert provider %s.%s error: %v", alert.ProviderRef.Name, providerNamespace, err)
+			c.logCanaryEvent(canary, fmt.Sprintf("Alert provider %s.%s error: %v", alert.ProviderRef.Name, providerNamespace, err), zapcore.ErrorLevel)
 			continue
 		}
 
@@ -238,19 +213,13 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		if provider.Spec.SecretRef != nil {
 			secret, err := c.kubeClient.CoreV1().Secrets(providerNamespace).Get(context.TODO(), provider.Spec.SecretRef.Name, metav1.GetOptions{})
 			if err != nil {
-				c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-					With("canary_name", canary.Name).
-					With("canary_namespace", canary.Namespace).
-					Errorf("alert provider %s.%s secretRef error: %v", alert.ProviderRef.Name, providerNamespace, err)
+				c.logCanaryEvent(canary, fmt.Sprintf("alert provider %s.%s secretRef error: %v", alert.ProviderRef.Name, providerNamespace, err), zapcore.ErrorLevel)
 				continue
 			}
 			if address, ok := secret.Data["address"]; ok {
 				url = string(address)
 			} else {
-				c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-					With("canary_name", canary.Name).
-					With("canary_namespace", canary.Namespace).
-					Errorf("alert provider %s.%s secret does not contain an address", alert.ProviderRef.Name, providerNamespace)
+				c.logCanaryEvent(canary, fmt.Sprintf("alert provider %s.%s secret does not contain an address: %v", alert.ProviderRef.Name, providerNamespace, err), zapcore.ErrorLevel)
 				continue
 			}
 
@@ -277,10 +246,7 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		f := notifier.NewFactory(url, token, proxy, username, channel)
 		n, err := f.Notifier(provider.Spec.Type)
 		if err != nil {
-			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				With("canary_name", canary.Name).
-				With("canary_namespace", canary.Namespace).
-				Errorf("alert provider %s.%s error: %v", alert.ProviderRef.Name, providerNamespace, err)
+			c.logCanaryEvent(canary, fmt.Sprintf("alert provider %s.%s error: %v", alert.ProviderRef.Name, providerNamespace, err), zapcore.ErrorLevel)
 			continue
 		}
 
@@ -288,12 +254,8 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		go func() {
 			err := n.Post(canary.Name, canary.Namespace, message, fields, string(severity), canaryId)
 			if err != nil {
-				c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-					With("canary_name", canary.Name).
-					With("canary_namespace", canary.Namespace).
-					Errorf("alert provider %s.%s send error: %v", alert.ProviderRef.Name, providerNamespace, err)
+				c.logCanaryEvent(canary, fmt.Sprintf("alert provider %s.%s send error: %v", alert.ProviderRef.Name, providerNamespace, err), zapcore.ErrorLevel)
 			}
-
 		}()
 
 	}
@@ -418,7 +380,6 @@ func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, sev
 
 	// 随机从keys选择一个
 	key := c.datadogKeys[ra.Intn(len(c.datadogKeys))]
-	c.logger.Debugf("Datadog API Key: %s", key.ApiKey)
 
 	ctx := context.WithValue(
 		context.Background(),
@@ -509,8 +470,6 @@ func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, sev
 			emails[attributes.Git.Commit.Author.Email],
 		)
 	}
-
-	c.logger.Debugf("fainl Message: %s", targetMessage)
 
 	return targetMessage, githubUrl, githubActionUrl, nil
 }
