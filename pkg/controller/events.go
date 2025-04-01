@@ -105,11 +105,9 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 		startTime = metav1.Now()
 	}
 
-	to := time.Now().Second() * 1000
-	from := startTime.Add(-time.Minute*30).Second() * 1000
-	if startTime.Add(time.Hour).Before(time.Now()) {
-		to = startTime.Add(time.Hour).Second() * 1000
-	}
+	from := startTime.Add(-time.Minute * 10).UnixMilli()
+	to := startTime.Add(time.Minute * 50).UnixMilli()
+
 	canaryURL := getCanaryURL(canary, from, to)
 	serviceURL := getServiceURL(canary, from, to)
 
@@ -263,8 +261,8 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 
 // https://docs.datadoghq.com/api/
 const (
-	dashboardTemplateURL           = "https://us5.datadoghq.com/dashboard/5pp-9u8-u3i/moego-canary?tpl_var_namespace%%5B0%%5D=%s&tpl_var_canary%%5B0%%5D=%s&tpl_var_primary%%5B0%%5D=%s&from_ts=%d&to_ts=%d"
-	serviceTemplateURL             = "https://us5.datadoghq.com/apm/entity/service%%3A%s?env=%s&start=%d&end=%d"
+	dashboardTemplateURL           = "https://us5.datadoghq.com/dashboard/5pp-9u8-u3i/moego-canary?fromUser=true&tpl_var_namespace%%5B0%%5D=%s&tpl_var_canary%%5B0%%5D=%s&tpl_var_primary%%5B0%%5D=%s&from_ts=%d&to_ts=%d&refresh_mode=paused&live=false"
+	serviceTemplateURL             = "https://us5.datadoghq.com/apm/entity/service%%3A%s?env=%s&start=%d&end=%d&fromUser=true&paused=true"
 	datadogKeysSecretKey           = "datadog_keys"
 	datadogAPIKeyHeaderKey         = "DD-API-KEY"
 	datadogApplicationKeyHeaderKey = "DD-APPLICATION-KEY"
@@ -489,21 +487,24 @@ func getEmojiMsg(severity flaggerv1.AlertSeverity) string {
 	}
 }
 
-func getCanaryURL(canary *flaggerv1.Canary, from, to int) string {
+func getCanaryURL(canary *flaggerv1.Canary, from, to int64) string {
+	name, primaryName, _ := canary.GetServiceNames()
 	return fmt.Sprintf(
 		dashboardTemplateURL,
-		canary.GetName(),
 		canary.GetNamespace(),
-		canary.GetName(),
+		name,
+		primaryName,
 		from,
 		to,
 	)
 }
 
-func getServiceURL(canary *flaggerv1.Canary, from, to int) string {
+func getServiceURL(canary *flaggerv1.Canary, from, to int64) string {
+	name, _, _ := canary.GetServiceNames()
+
 	return fmt.Sprintf(
 		serviceTemplateURL,
-		canary.GetName(),
+		name,
 		canary.GetNamespace(),
 		from,
 		to,
