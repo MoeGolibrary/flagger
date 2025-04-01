@@ -342,9 +342,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// check if canary revision changed during analysis
 	if restart := c.hasCanaryRevisionChanged(cd, canaryController); restart {
-		c.recordEventWarningf(cd, "New revision detected! Restarting Canary analysis for %s.%s",
-			cd.Spec.TargetRef.Name, cd.Namespace)
-
+		c.logCanaryEvent(cd, fmt.Sprintf("Canary revision changed during analysis, restarting analysis"), zapcore.InfoLevel)
 		// route all traffic back to primary
 		primaryWeight = c.totalWeight(cd)
 		canaryWeight = 0
@@ -364,8 +362,6 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		if err := canaryController.SyncStatus(cd, status); err != nil {
 			c.recordEventWarningf(cd, "%v", err)
 			return
-		} else {
-			c.recordEventInfof(cd, "Canary analysis restarted for %s.%s", cd.Name, cd.Namespace)
 		}
 		cd, err = c.flaggerClient.FlaggerV1beta1().Canaries(cd.Namespace).Get(context.TODO(), cd.Name, metav1.GetOptions{})
 		if err != nil {
@@ -374,6 +370,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 				With("canary_namespace", cd.Namespace).Errorf("%v", err)
 			return
 		}
+		c.recordEventWarningf(cd, "New revision detected! Restarting Canary analysis for %s.%s",
+			cd.Spec.TargetRef.Name, cd.Namespace)
 		// send alert
 		c.alert(cd, fmt.Sprintf("New revision detected! Restarting Canary analysis for %s.%s",
 			cd.Spec.TargetRef.Name, cd.Namespace),
@@ -958,8 +956,8 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 
 		canaryPhaseProgressing := canary.DeepCopy()
 		canaryPhaseProgressing.Status.Phase = flaggerv1.CanaryPhaseProgressing
-		c.recordEventInfof(canaryPhaseProgressing, "New revision detected! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace)
 
+		c.logCanaryEvent(canaryPhaseProgressing, fmt.Sprintf("New revision detected! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace), zapcore.InfoLevel)
 		if scalerReconciler != nil {
 			err = scalerReconciler.ResumeTargetScaler(canary)
 			if err != nil {
@@ -974,16 +972,15 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 		if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseProgressing, LastStartTime: metav1.Now()}); err != nil {
 			c.logCanaryEvent(canary, fmt.Sprintf("Failed to update canary status"), zapcore.ErrorLevel)
 			return false
-		} else {
-			c.recordEventInfof(canary, "Scaled up %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
 		}
 		c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseProgressing)
-		// send alert
 		canary, err = c.flaggerClient.FlaggerV1beta1().Canaries(canary.Namespace).Get(context.TODO(), canary.Name, metav1.GetOptions{})
 		if err != nil {
 			c.logCanaryEvent(canary, fmt.Sprintf("Failed get canary"), zapcore.ErrorLevel)
 			return false
 		}
+		c.recordEventInfof(canaryPhaseProgressing, "New revision detected! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace)
+		// send alert
 		c.alert(canary, fmt.Sprintf("New revision detected, progressing canary analysis! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace),
 			true, flaggerv1.SeverityInfo)
 		return false
