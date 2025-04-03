@@ -261,8 +261,8 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 
 // https://docs.datadoghq.com/api/
 const (
-	dashboardTemplateURL           = "https://us5.datadoghq.com/dashboard/5pp-9u8-u3i/moego-canary?fromUser=true&tpl_var_namespace%%5B0%%5D=%s&tpl_var_canary%%5B0%%5D=%s&tpl_var_primary%%5B0%%5D=%s&from_ts=%d&to_ts=%d&refresh_mode=paused&live=false"
-	serviceTemplateURL             = "https://us5.datadoghq.com/apm/entity/service%%3A%s?env=%s&start=%d&end=%d&fromUser=true&paused=true"
+	dashboardTemplateURL           = "https://us5.datadoghq.com/dashboard/5pp-9u8-u3i/moego-canary?fromUser=true&tpl_var_namespace%%5B0%%5D=%s&tpl_var_canary%%5B0%%5D=%s&tpl_var_primary%%5B0%%5D=%s&from_ts=%d&refresh_mode=paused&live=false"
+	serviceTemplateURL             = "https://us5.datadoghq.com/apm/entity/service%%3A%s?env=%s&start=%d&end=%d&fromUser=true&paused=false"
 	datadogKeysSecretKey           = "datadog_keys"
 	datadogAPIKeyHeaderKey         = "DD-API-KEY"
 	datadogApplicationKeyHeaderKey = "DD-APPLICATION-KEY"
@@ -487,20 +487,21 @@ func getEmojiMsg(severity flaggerv1.AlertSeverity) string {
 	}
 }
 
+// TODO to_ts 需要动态获取
 func getCanaryURL(canary *flaggerv1.Canary, from, to int64) string {
-	name, primaryName, _ := canary.GetServiceNames()
+	name := canary.Spec.TargetRef.Name
+	primaryName := fmt.Sprintf("%s-primary", name)
 	return fmt.Sprintf(
 		dashboardTemplateURL,
 		canary.GetNamespace(),
 		name,
 		primaryName,
 		from,
-		to,
 	)
 }
 
 func getServiceURL(canary *flaggerv1.Canary, from, to int64) string {
-	name, _, _ := canary.GetServiceNames()
+	name := canary.Spec.TargetRef.Name
 
 	return fmt.Sprintf(
 		serviceTemplateURL,
