@@ -111,39 +111,12 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 	canaryURL := getCanaryURL(canary, from, to)
 	serviceURL := getServiceURL(canary, from, to)
 
-	if c.sendAt {
-		var err error
-		var githubUrl, githubActionUrl string
-		message, githubUrl, githubActionUrl, err = c.getCommitters(canary, message, severity, canaryURL, serviceURL)
-		if err != nil {
-			c.logCanaryEvent(canary, fmt.Sprintf("alert parse msg: %v", err), zapcore.ErrorLevel)
-		}
-		if githubUrl != "" {
-			fields = append(fields, notifier.Field{
-				Name:  "Github Repo",
-				Value: githubUrl,
-				Type:  "link",
-			})
-		}
-		if githubActionUrl != "" {
-			fields = append(fields, notifier.Field{
-				Name:  "Github Action",
-				Value: githubActionUrl,
-				Type:  "link",
-			})
-		}
+	message, err := c.getCommitters(canary, message, severity, canaryURL, serviceURL, c.sendAt)
+	if err != nil {
+		c.logCanaryEvent(canary, fmt.Sprintf("alert parse msg: %v", err), zapcore.ErrorLevel)
 	}
+	message += fmt.Sprintf("*Canary Dashboard*: <%s|Canary Dashboard> \n*Datadog Service*: <%s|Datadog Service>\n", canaryURL, serviceURL)
 
-	// add canary dashboard link
-	fields = append(fields, notifier.Field{
-		Name:  "Canary Dashboard",
-		Value: canaryURL,
-		Type:  "link",
-	}, notifier.Field{
-		Name:  "Datadog Service Page",
-		Value: serviceURL,
-		Type:  "link",
-	})
 	// set alert message
 	if severity == flaggerv1.SeverityError {
 		message = fmt.Sprintf("%s \n\n Please check the **Canary Dashboard**  to find out why error.\n", message)
@@ -261,7 +234,7 @@ func (c *Controller) alert(canary *flaggerv1.Canary, message string, metadata bo
 
 // https://docs.datadoghq.com/api/
 const (
-	dashboardTemplateURL           = "https://us5.datadoghq.com/dashboard/5pp-9u8-u3i/moego-canary?fromUser=true&tpl_var_namespace%%5B0%%5D=%s&tpl_var_canary%%5B0%%5D=%s&tpl_var_primary%%5B0%%5D=%s&from_ts=%d&refresh_mode=paused&live=false"
+	dashboardTemplateURL           = "https://us5.datadoghq.com/dashboard/5pp-9u8-u3i/moego-canary?fromUser=true&tpl_var_namespace%%5B0%%5D=%s&tpl_var_canary%%5B0%%5D=%s&tpl_var_primary%%5B0%%5D=%s&from_ts=%d&to_ts=%d&refresh_mode=paused&live=false"
 	serviceTemplateURL             = "https://us5.datadoghq.com/apm/entity/service%%3A%s?env=%s&start=%d&end=%d&fromUser=true&paused=false"
 	datadogKeysSecretKey           = "datadog_keys"
 	datadogAPIKeyHeaderKey         = "DD-API-KEY"
@@ -358,21 +331,21 @@ func (c *Controller) initDatadogKeys() error {
 	return nil
 }
 
-func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, severity flaggerv1.AlertSeverity, canaryURL, serviceURL string) (string, string, string, error) {
+func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, severity flaggerv1.AlertSeverity, canaryURL, serviceURL string, sendAt bool) (string, error) {
 	targetMessage := message
 	var githubUrl, githubActionUrl string
 
 	_, _, _, labels, _ := c.canaryFactory.Controller(canary.Spec.TargetRef.Kind).GetMetadata(canary)
 
 	if labels == nil {
-		return targetMessage, githubUrl, githubActionUrl, fmt.Errorf("alert datadog no labels")
+		return targetMessage, fmt.Errorf("alert datadog no labels")
 	}
 	repo := labels["repo-name"]
 	if repo == "" {
 		repo = labels["tags.datadoghq.com/service"]
 	}
 	if repo == "" {
-		return targetMessage, githubUrl, githubActionUrl, fmt.Errorf("alert datadog no secret keys ")
+		return targetMessage, fmt.Errorf("alert datadog no secret keys ")
 	}
 	branch := labels["branch"]
 
@@ -401,20 +374,21 @@ func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, sev
 		WithFilterQuery(fmt.Sprintf("ci_level:pipeline @git.repository.id:\"github.com/MoeGolibrary/%s\" @git.branch:%s", repo, branch)).
 		WithFilterFrom(time.Now().Add(time.Hour * 24 * -30)).
 		WithFilterTo(time.Now()).
-		WithPageLimit(1000).
-		WithSort(datadogV2.CIAPPSORT_TIMESTAMP_ASCENDING)
+		WithPageLimit(100).
+		WithSort(datadogV2.CIAPPSORT_TIMESTAMP_DESCENDING)
 	resp, r, err := api.ListCIAppPipelineEvents(ctx, body)
 
 	if err != nil || r.StatusCode != 200 {
-		return targetMessage, githubUrl, githubActionUrl, fmt.Errorf("alert datadog error: %v", err)
+		return targetMessage, fmt.Errorf("alert datadog error: %v", err)
 	}
 	data, ok := resp.GetDataOk()
 	if !ok {
-		return targetMessage, githubUrl, githubActionUrl, fmt.Errorf("alert datadog no events")
+		return targetMessage, fmt.Errorf("alert datadog no events")
 	}
-	targetMessage += "\n*Commits*\n"
+	targetMessage += "\n*Affected*\n"
 	var emails = make(map[string]string)
-	for index, event := range *data {
+	index := 1
+	for _, event := range *data {
 		eventAttributes, ok := event.GetAttributesOk()
 		if !ok {
 			continue
@@ -434,9 +408,11 @@ func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, sev
 		if githubActionUrl == "" {
 			githubActionUrl = attributes.Ci.Pipeline.Url
 		}
-		if _, ok := emails[attributes.Git.Commit.Author.Email]; !ok {
-			emails[attributes.Git.Commit.Author.Email] = c.getSlackUserByEmail(attributes.Git.Commit.Author.Email)
-			if severity == flaggerv1.SeverityError || severity == flaggerv1.SeverityWarn {
+		email := attributes.Git.Commit.Author.Email
+		if _, ok := emails[email]; !ok {
+			emails[email] = c.getSlackUserByEmail(email)
+			// bark
+			if sendAt && (severity == flaggerv1.SeverityError || severity == flaggerv1.SeverityWarn) {
 				barkMessageContent := fmt.Sprintf(
 					"*%s %s %s: %s » %s (%s)* \n <%s|Github Repo> <%s|Github Action> <%s|Canary Dashboard> <%s|Datadog Srvice>",
 					getEmojiMsg(severity),
@@ -451,25 +427,19 @@ func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, sev
 					serviceURL,
 				)
 
-				go c.barkMessage(attributes.Git.Commit.Author.Email, barkMessageContent)
+				go c.barkMessage(email, barkMessageContent)
+
+			}
+			if sendAt {
+				// @ slack user
+				targetMessage += fmt.Sprintf("%d. <@%s> \n", index, emails[email])
+				index++
 			}
 		}
-		timeString := time.Unix(attributes.Start, 0).In(time.FixedZone("CST", 8*3600)).Format("2006-01-02 15:04:05 (CST)")
-		targetMessage += fmt.Sprintf(
-			"%d. <https://github.com/%s/commit/%s|%s> %s %s<%s> %s <@%s>\n",
-			index+1,
-			attributes.Git.Repository.Name,
-			attributes.Git.Commit.Sha[:7],
-			attributes.Git.Commit.Sha[:7],
-			timeString,
-			attributes.Git.Commit.Author.Name,
-			attributes.Git.Commit.Author.Email,
-			strings.Replace(attributes.Git.Commit.Message, "\n", " ", -1),
-			emails[attributes.Git.Commit.Author.Email],
-		)
 	}
+	targetMessage += fmt.Sprintf("*Github Action*: <%s|Github Action>\n", githubActionUrl)
 
-	return targetMessage, githubUrl, githubActionUrl, nil
+	return targetMessage, nil
 }
 
 func getEmojiMsg(severity flaggerv1.AlertSeverity) string {
@@ -487,7 +457,6 @@ func getEmojiMsg(severity flaggerv1.AlertSeverity) string {
 	}
 }
 
-// TODO to_ts 需要动态获取
 func getCanaryURL(canary *flaggerv1.Canary, from, to int64) string {
 	name := canary.Spec.TargetRef.Name
 	primaryName := fmt.Sprintf("%s-primary", name)
@@ -497,11 +466,12 @@ func getCanaryURL(canary *flaggerv1.Canary, from, to int64) string {
 		name,
 		primaryName,
 		from,
+		to,
 	)
 }
 
 func getServiceURL(canary *flaggerv1.Canary, from, to int64) string {
-	name := canary.Spec.TargetRef.Name
+	name, _, _ := canary.GetServiceNames()
 
 	return fmt.Sprintf(
 		serviceTemplateURL,

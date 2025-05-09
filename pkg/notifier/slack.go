@@ -137,12 +137,13 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 				),
 			))
 		}
-
-		actionsBlock := slack.NewActionBlock(
-			"actions",
-			elements...,
-		)
-		blocks = append(blocks, actionsBlock)
+		if len(elements) > 0 {
+			actionsBlock := slack.NewActionBlock(
+				"actions",
+				elements...,
+			)
+			blocks = append(blocks, actionsBlock)
+		}
 	}
 
 	msg := slack.WebhookMessage{
@@ -151,14 +152,13 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 		},
 	}
 
-	// 输出msg json
-	b, _ := json.Marshal(msg)
-	fmt.Printf("Slack WebhookMessage: %s \n", string(b))
-
 	err := slack.PostWebhook(s.URL, &msg)
 
 	if err != nil {
-		return fmt.Errorf("postMessage failed: %w", err)
+		// 输出msg json
+		b, _ := json.Marshal(msg)
+		fmt.Printf("Slack WebhookMessage: %s \n", string(b))
+		return fmt.Errorf("postMessage failed: %s, err: %w", string(b), err)
 	}
 	return nil
 }
