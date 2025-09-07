@@ -534,6 +534,11 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// strategy: Canary progressive traffic increase
 	if c.nextStepWeight(cd, canaryWeight) > 0 {
+		if shouldContinue, manualTrafficRatio := c.runManualTrafficControlHooks(cd, canaryController, meshRouter); !shouldContinue {
+			c.recorder.SetWeight(cd, 100-manualTrafficRatio, manualTrafficRatio)
+			return
+		}
+		
 		// run hook only if traffic is not mirrored
 		if !mirrored &&
 			(cd.Status.Phase != flaggerv1.CanaryPhasePromoting &&

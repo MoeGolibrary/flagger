@@ -384,6 +384,7 @@ const (
 	SkipHook HookType = "skip"
 	// ConfirmTrafficIncreaseHook increases traffic weight if webhook returns HTTP 200
 	ConfirmTrafficIncreaseHook = "confirm-traffic-increase"
+	ManualTrafficControlHook = "manual-traffic-control"
 )
 
 // CanaryWebhook holds the reference to external checks used for canary analysis
@@ -438,6 +439,9 @@ type CanaryWebhookPayload struct {
 	CanaryWeight  int           `json:"canary_weight"`
 	Iterations    int           `json:"iterations"`
 	RemainingTime time.Duration `json:"remaining_time"`
+
+	ManualControlActive   bool `json:"manual_control_active,omitempty"`
+	RequestedTrafficRatio int  `json:"requested_traffic_ratio,omitempty"`
 
 	// Metadata (key-value pairs) for this webhook
 	Metadata map[string]string `json:"metadata,omitempty"`
