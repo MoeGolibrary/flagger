@@ -534,11 +534,50 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// strategy: Canary progressive traffic increase
 	if c.nextStepWeight(cd, canaryWeight) > 0 {
-		if shouldContinue, manualTrafficRatio := c.runManualTrafficControlHooks(cd, canaryController, meshRouter); !shouldContinue {
-			c.recorder.SetWeight(cd, 100-manualTrafficRatio, manualTrafficRatio)
+		// Check for manual traffic increase webhook
+		if shouldContinue, manualTrafficWeight := c.runManualTrafficControlHooks(cd, canaryController, meshRouter); !shouldContinue {
+			c.recorder.SetWeight(cd, 100-manualTrafficWeight, manualTrafficWeight)
 			return
 		}
-		
+
+		// Check for manual step in spec
+		if cd.Spec.ManualStep != nil {
+			if !cd.Spec.ManualStep.Resume {
+				// Manual step is defined and not resumed
+				if canaryWeight >= cd.Spec.ManualStep.Weight {
+					// We've reached or exceeded the manual step weight, pause
+					c.recordEventInfof(cd, "Canary is paused at %d%% traffic weight. Waiting for manual resume.",
+						cd.Spec.ManualStep.Weight)
+
+					// Set the status to waiting if not already
+					if cd.Status.Phase != flaggerv1.CanaryPhaseWaiting {
+						if err := canaryController.SetStatusPhase(cd, flaggerv1.CanaryPhaseWaiting); err != nil {
+							c.recordEventWarningf(cd, "%v", err)
+						}
+					}
+
+					// Keep traffic at the specified weight
+					if err := meshRouter.SetRoutes(cd, 100-cd.Spec.ManualStep.Weight, cd.Spec.ManualStep.Weight, false); err != nil {
+						c.recordEventWarningf(cd, "%v", err)
+					}
+					c.recorder.SetWeight(cd, 100-cd.Spec.ManualStep.Weight, cd.Spec.ManualStep.Weight)
+					return
+				}
+			} else {
+				// Manual step is resumed, continue with automated traffic shifting
+				// Reset the manual step after processing
+				defer func() {
+					cd.Spec.ManualStep = nil
+					_, err := c.flaggerClient.FlaggerV1beta1().Canaries(cd.Namespace).Update(context.TODO(), cd, metav1.UpdateOptions{})
+					if err != nil {
+						c.recordEventWarningf(cd, "Failed to reset manual step: %v", err)
+					}
+				}()
+
+				c.recordEventInfof(cd, "Resuming automated traffic shifting from %d%% canary weight", canaryWeight)
+			}
+		}
+
 		// run hook only if traffic is not mirrored
 		if !mirrored &&
 			(cd.Status.Phase != flaggerv1.CanaryPhasePromoting &&

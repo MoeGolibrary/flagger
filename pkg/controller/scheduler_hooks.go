@@ -170,13 +170,13 @@ func (c *Controller) runManualTrafficControlHooks(canary *flaggerv1.Canary, cana
 						c.recordEventWarningf(canary, "Failed to set manual traffic control: %v", err)
 						return false, 0
 					}
-					
+
 					primaryWeight := 100 - trafficRatio
 					if err := meshRouter.SetRoutes(canary, primaryWeight, trafficRatio, false); err != nil {
 						c.recordEventWarningf(canary, "Failed to set traffic routes: %v", err)
 						return false, 0
 					}
-					
+
 					c.recordEventInfof(canary, "Manual traffic control activated: %d%% canary traffic", trafficRatio)
 					return false, trafficRatio
 				}
@@ -211,7 +211,7 @@ func (c *Controller) setManualTrafficControlState(canary *flaggerv1.Canary, cana
 		}
 		c.recordEventInfof(canary, "Canary paused for manual traffic control")
 	}
-	
+
 	return canaryController.SetStatusWeight(canary, trafficRatio)
 }
 

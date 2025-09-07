@@ -14,76 +14,76 @@ import (
 
 func TestParseTrafficControlResponse(t *testing.T) {
 	tests := []struct {
-		name           string
-		err            error
-		expectedRatio  int
-		expectedPause  bool
+		name          string
+		err           error
+		expectedRatio int
+		expectedPause bool
 	}{
 		{
-			name:           "valid pause with ratio 10",
-			err:            fmt.Errorf("PAUSE:10"),
-			expectedRatio:  10,
-			expectedPause:  true,
+			name:          "valid pause with ratio 10",
+			err:           fmt.Errorf("PAUSE:10"),
+			expectedRatio: 10,
+			expectedPause: true,
 		},
 		{
-			name:           "valid pause with ratio 50",
-			err:            fmt.Errorf("PAUSE:50"),
-			expectedRatio:  50,
-			expectedPause:  true,
+			name:          "valid pause with ratio 50",
+			err:           fmt.Errorf("PAUSE:50"),
+			expectedRatio: 50,
+			expectedPause: true,
 		},
 		{
-			name:           "valid pause with ratio 100",
-			err:            fmt.Errorf("PAUSE:100"),
-			expectedRatio:  100,
-			expectedPause:  true,
+			name:          "valid pause with ratio 100",
+			err:           fmt.Errorf("PAUSE:100"),
+			expectedRatio: 100,
+			expectedPause: true,
 		},
 		{
-			name:           "valid pause with ratio 0",
-			err:            fmt.Errorf("PAUSE:0"),
-			expectedRatio:  0,
-			expectedPause:  true,
+			name:          "valid pause with ratio 0",
+			err:           fmt.Errorf("PAUSE:0"),
+			expectedRatio: 0,
+			expectedPause: true,
 		},
 		{
-			name:           "invalid ratio above 100",
-			err:            fmt.Errorf("PAUSE:150"),
-			expectedRatio:  0,
-			expectedPause:  false,
+			name:          "invalid ratio above 100",
+			err:           fmt.Errorf("PAUSE:150"),
+			expectedRatio: 0,
+			expectedPause: false,
 		},
 		{
-			name:           "invalid negative ratio",
-			err:            fmt.Errorf("PAUSE:-10"),
-			expectedRatio:  0,
-			expectedPause:  false,
+			name:          "invalid negative ratio",
+			err:           fmt.Errorf("PAUSE:-10"),
+			expectedRatio: 0,
+			expectedPause: false,
 		},
 		{
-			name:           "invalid non-numeric ratio",
-			err:            fmt.Errorf("PAUSE:abc"),
-			expectedRatio:  0,
-			expectedPause:  false,
+			name:          "invalid non-numeric ratio",
+			err:           fmt.Errorf("PAUSE:abc"),
+			expectedRatio: 0,
+			expectedPause: false,
 		},
 		{
-			name:           "resume command",
-			err:            fmt.Errorf("RESUME"),
-			expectedRatio:  0,
-			expectedPause:  false,
+			name:          "resume command",
+			err:           fmt.Errorf("RESUME"),
+			expectedRatio: 0,
+			expectedPause: false,
 		},
 		{
-			name:           "other error",
-			err:            fmt.Errorf("some other error"),
-			expectedRatio:  0,
-			expectedPause:  false,
+			name:          "other error",
+			err:           fmt.Errorf("some other error"),
+			expectedRatio: 0,
+			expectedPause: false,
 		},
 		{
-			name:           "empty pause command",
-			err:            fmt.Errorf("PAUSE:"),
-			expectedRatio:  0,
-			expectedPause:  false,
+			name:          "empty pause command",
+			err:           fmt.Errorf("PAUSE:"),
+			expectedRatio: 0,
+			expectedPause: false,
 		},
 		{
-			name:           "pause without colon",
-			err:            fmt.Errorf("PAUSE"),
-			expectedRatio:  0,
-			expectedPause:  false,
+			name:          "pause without colon",
+			err:           fmt.Errorf("PAUSE"),
+			expectedRatio: 0,
+			expectedPause: false,
 		},
 	}
 
@@ -98,55 +98,55 @@ func TestParseTrafficControlResponse(t *testing.T) {
 
 func TestSetManualTrafficControlState(t *testing.T) {
 	f := newDeploymentFixture(nil)
-	
+
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-	
+
 	ctrl := f.ctrl
 	err := ctrl.setManualTrafficControlState(canary, f.deployer, 25)
 	require.NoError(t, err)
-	
+
 	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, canary.Status.Phase)
 	assert.Equal(t, 25, canary.Status.CanaryWeight)
 }
 
 func TestSetManualTrafficControlState_AlreadyWaiting(t *testing.T) {
 	f := newDeploymentFixture(nil)
-	
+
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseWaiting
-	
+
 	ctrl := f.ctrl
 	err := ctrl.setManualTrafficControlState(canary, f.deployer, 30)
 	require.NoError(t, err)
-	
+
 	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, canary.Status.Phase)
 	assert.Equal(t, 30, canary.Status.CanaryWeight)
 }
 
 func TestClearManualTrafficControlState(t *testing.T) {
 	f := newDeploymentFixture(nil)
-	
+
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseWaiting
-	
+
 	ctrl := f.ctrl
 	err := ctrl.clearManualTrafficControlState(canary, f.deployer)
 	require.NoError(t, err)
-	
+
 	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, canary.Status.Phase)
 }
 
 func TestClearManualTrafficControlState_NotWaiting(t *testing.T) {
 	f := newDeploymentFixture(nil)
-	
+
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-	
+
 	ctrl := f.ctrl
 	err := ctrl.clearManualTrafficControlState(canary, f.deployer)
 	require.NoError(t, err)
-	
+
 	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, canary.Status.Phase)
 }
 
@@ -158,12 +158,12 @@ func TestRunManualTrafficControlHooks_Pause(t *testing.T) {
 	defer ts.Close()
 
 	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
-	
+
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-	
+
 	shouldContinue, ratio := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
-	
+
 	assert.False(t, shouldContinue)
 	assert.Equal(t, 0, ratio)
 	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, canary.Status.Phase)
@@ -176,12 +176,12 @@ func TestRunManualTrafficControlHooks_Resume(t *testing.T) {
 	defer ts.Close()
 
 	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
-	
+
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseWaiting
-	
+
 	shouldContinue, ratio := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
-	
+
 	assert.True(t, shouldContinue)
 	assert.Equal(t, 0, ratio)
 	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, canary.Status.Phase)
@@ -195,12 +195,12 @@ func TestRunManualTrafficControlHooks_InvalidResponse(t *testing.T) {
 	defer ts.Close()
 
 	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
-	
+
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-	
+
 	shouldContinue, ratio := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
-	
+
 	assert.True(t, shouldContinue)
 	assert.Equal(t, 0, ratio)
 	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, canary.Status.Phase)
@@ -208,12 +208,12 @@ func TestRunManualTrafficControlHooks_InvalidResponse(t *testing.T) {
 
 func TestRunManualTrafficControlHooks_NoManualHooks(t *testing.T) {
 	f := newDeploymentFixture(nil)
-	
+
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-	
+
 	shouldContinue, ratio := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
-	
+
 	assert.True(t, shouldContinue)
 	assert.Equal(t, 0, ratio)
 	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, canary.Status.Phase)
@@ -246,12 +246,12 @@ func TestRunManualTrafficControlHooks_MultipleHooks(t *testing.T) {
 	}
 
 	f := newDeploymentFixture(canary)
-	
+
 	canaryObj := f.canary.DeepCopy()
 	canaryObj.Status.Phase = flaggerv1.CanaryPhaseProgressing
-	
+
 	shouldContinue, ratio := f.ctrl.runManualTrafficControlHooks(canaryObj, f.deployer, f.router)
-	
+
 	assert.True(t, shouldContinue)
 	assert.Equal(t, 0, ratio)
 	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, canaryObj.Status.Phase)
@@ -265,12 +265,12 @@ func TestRunManualTrafficControlHooks_WebhookError(t *testing.T) {
 	defer ts.Close()
 
 	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
-	
+
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-	
+
 	shouldContinue, ratio := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
-	
+
 	assert.True(t, shouldContinue)
 	assert.Equal(t, 0, ratio)
 	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, canary.Status.Phase)
@@ -284,6 +284,68 @@ func newDeploymentTestCanaryWithManualHook(webhookURL string) *flaggerv1.Canary 
 			URL:     webhookURL,
 			Type:    flaggerv1.ManualTrafficControlHook,
 			Retries: 0,
+		},
+	}
+	return canary
+}
+
+func TestRunManualTrafficControlHooks_NoHooks(t *testing.T) {
+	f := newDeploymentFixture(nil)
+
+	canary := f.canary.DeepCopy()
+	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	shouldContinue, weight := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
+
+	assert.True(t, shouldContinue)
+	assert.Equal(t, 0, weight)
+}
+
+func TestRunManualTrafficControlHooks_InvalidWeight(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"weight": "invalid"}`))
+	}))
+	defer ts.Close()
+
+	f := newDeploymentFixture(newDeploymentTestCanaryWithManualIncreaseHook(ts.URL))
+
+	canary := f.canary.DeepCopy()
+	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	shouldContinue, weight := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
+
+	assert.False(t, shouldContinue)
+	assert.Equal(t, canary.Status.CanaryWeight, weight)
+}
+
+func TestRunManualTrafficControlHooks_OutOfRangeWeight(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"weight": "150"}`))
+	}))
+	defer ts.Close()
+
+	f := newDeploymentFixture(newDeploymentTestCanaryWithManualIncreaseHook(ts.URL))
+
+	canary := f.canary.DeepCopy()
+	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	shouldContinue, weight := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
+
+	assert.False(t, shouldContinue)
+	assert.Equal(t, canary.Status.CanaryWeight, weight)
+}
+
+func newDeploymentTestCanaryWithManualIncreaseHook(webhookURL string) *flaggerv1.Canary {
+	canary := newDeploymentTestCanary()
+	canary.Spec.Analysis.Webhooks = []flaggerv1.CanaryWebhook{
+		{
+			Name:     "manual-traffic-increase",
+			URL:      webhookURL,
+			Type:     flaggerv1.ManualTrafficControlHook,
+			Retries:  0,
+			Metadata: &map[string]string{"weight": "30"},
 		},
 	}
 	return canary

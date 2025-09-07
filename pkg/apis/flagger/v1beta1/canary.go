@@ -117,6 +117,20 @@ type CanarySpec struct {
 	// Canary is suspended during an analysis, its paused until the Canary is unsuspended.
 	// +optional
 	Suspend bool `json:"suspend,omitempty"`
+
+	// ManualStep defines the manual traffic routing step, if specified, the canary will
+	// pause at this weight until resumed
+	// +optional
+	ManualStep *CanaryManualStep `json:"manualStep,omitempty"`
+}
+
+// CanaryManualStep defines the manual step configuration for traffic routing
+type CanaryManualStep struct {
+	// Weight defines the traffic weight to route to canary when in manual mode
+	Weight int `json:"weight,omitempty"`
+
+	// Resume indicates if the canary should resume automated traffic shifting
+	Resume bool `json:"resume,omitempty"`
 }
 
 // CanaryService defines how ClusterIP services, service mesh or ingress routing objects are generated
@@ -384,6 +398,7 @@ const (
 	SkipHook HookType = "skip"
 	// ConfirmTrafficIncreaseHook increases traffic weight if webhook returns HTTP 200
 	ConfirmTrafficIncreaseHook = "confirm-traffic-increase"
+	// ManualTrafficControlHook pauses canary analysis until webhook returns HTTP 200
 	ManualTrafficControlHook = "manual-traffic-control"
 )
 
@@ -440,8 +455,7 @@ type CanaryWebhookPayload struct {
 	Iterations    int           `json:"iterations"`
 	RemainingTime time.Duration `json:"remaining_time"`
 
-	ManualControlActive   bool `json:"manual_control_active,omitempty"`
-	RequestedTrafficRatio int  `json:"requested_traffic_ratio,omitempty"`
+	ManualStepWeight int `json:"manual_step_weight,omitempty"`
 
 	// Metadata (key-value pairs) for this webhook
 	Metadata map[string]string `json:"metadata,omitempty"`
