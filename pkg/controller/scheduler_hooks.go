@@ -18,10 +18,14 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	"go.uber.org/zap/zapcore"
 
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 	"github.com/fluxcd/flagger/pkg/canary"
+	"github.com/fluxcd/flagger/pkg/router"
 )
 
 func (c *Controller) runConfirmTrafficIncreaseHooks(canary *flaggerv1.Canary) bool {
@@ -154,4 +158,69 @@ func (c *Controller) runSkipHooks(canary *flaggerv1.Canary, phase flaggerv1.Cana
 		}
 	}
 	return false
+}
+
+func (c *Controller) runManualTrafficControlHooks(canary *flaggerv1.Canary, canaryController canary.Controller, meshRouter router.Interface) (shouldContinue bool, manualTrafficRatio int) {
+	for _, webhook := range canary.GetAnalysis().Webhooks {
+		if webhook.Type == flaggerv1.ManualTrafficControlHook {
+			err := CallWebhook(*canary, canary.Status.Phase, webhook)
+			if err != nil {
+				if trafficRatio, shouldPause := parseTrafficControlResponse(err); shouldPause {
+					if err := c.setManualTrafficControlState(canary, canaryController, trafficRatio); err != nil {
+						c.recordEventWarningf(canary, "Failed to set manual traffic control: %v", err)
+						return false, 0
+					}
+
+					primaryWeight := 100 - trafficRatio
+					if err := meshRouter.SetRoutes(canary, primaryWeight, trafficRatio, false); err != nil {
+						c.recordEventWarningf(canary, "Failed to set traffic routes: %v", err)
+						return false, 0
+					}
+
+					c.recordEventInfof(canary, "Manual traffic control activated: %d%% canary traffic", trafficRatio)
+					return false, trafficRatio
+				}
+			} else {
+				if err := c.clearManualTrafficControlState(canary, canaryController); err != nil {
+					c.recordEventWarningf(canary, "Failed to clear manual traffic control: %v", err)
+				}
+				c.recordEventInfof(canary, "Manual traffic control deactivated, resuming automatic progression")
+				return true, 0
+			}
+		}
+	}
+	return true, 0
+}
+
+func parseTrafficControlResponse(err error) (int, bool) {
+	errMsg := err.Error()
+	if strings.HasPrefix(errMsg, "PAUSE:") {
+		if ratio, parseErr := strconv.Atoi(strings.TrimPrefix(errMsg, "PAUSE:")); parseErr == nil {
+			if ratio >= 0 && ratio <= 100 {
+				return ratio, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func (c *Controller) setManualTrafficControlState(canary *flaggerv1.Canary, canaryController canary.Controller, trafficRatio int) error {
+	if canary.Status.Phase != flaggerv1.CanaryPhaseWaiting {
+		if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseWaiting); err != nil {
+			return err
+		}
+		c.recordEventInfof(canary, "Canary paused for manual traffic control")
+	}
+
+	return canaryController.SetStatusWeight(canary, trafficRatio)
+}
+
+func (c *Controller) clearManualTrafficControlState(canary *flaggerv1.Canary, canaryController canary.Controller) error {
+	if canary.Status.Phase == flaggerv1.CanaryPhaseWaiting {
+		if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseProgressing); err != nil {
+			return err
+		}
+		c.recordEventInfof(canary, "Canary resumed from manual traffic control")
+	}
+	return nil
 }
