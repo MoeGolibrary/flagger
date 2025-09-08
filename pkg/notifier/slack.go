@@ -137,6 +137,30 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 				),
 			))
 		}
+
+		// 如果canaryId不为空，添加人工介入控制按钮
+		if canaryId != "" {
+			// Pause at Weight button
+			elements = append(elements, slack.NewButtonBlockElement(
+				"pause_at_weight",
+				canaryId,
+				slack.NewTextBlockObject("plain_text", "Pause at Weight", false, false),
+			).WithStyle(slack.StylePrimary))
+
+			// Resume button
+			elements = append(elements, slack.NewButtonBlockElement(
+				"resume_canary",
+				canaryId,
+				slack.NewTextBlockObject("plain_text", "Resume", false, false),
+			).WithStyle(slack.StylePrimary))
+
+			// Set Weight button
+			elements = append(elements, slack.NewButtonBlockElement(
+				"set_weight",
+				canaryId,
+				slack.NewTextBlockObject("plain_text", "Set Weight", false, false),
+			).WithStyle(slack.StylePrimary))
+		}
 		if len(elements) > 0 {
 			actionsBlock := slack.NewActionBlock(
 				"actions",
