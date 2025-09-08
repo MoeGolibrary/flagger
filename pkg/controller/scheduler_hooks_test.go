@@ -220,6 +220,7 @@ func TestRunManualTrafficControlHooks_NoManualHooks(t *testing.T) {
 }
 
 func TestRunManualTrafficControlHooks_MultipleHooks(t *testing.T) {
+	// First webhook returns success (resume), second returns pause
 	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -250,6 +251,7 @@ func TestRunManualTrafficControlHooks_MultipleHooks(t *testing.T) {
 	canaryObj := f.canary.DeepCopy()
 	canaryObj.Status.Phase = flaggerv1.CanaryPhaseProgressing
 
+	// Since the first webhook succeeds, it should resume and return true
 	shouldContinue, ratio := f.ctrl.runManualTrafficControlHooks(canaryObj, f.deployer, f.router)
 
 	assert.True(t, shouldContinue)
@@ -289,64 +291,63 @@ func newDeploymentTestCanaryWithManualHook(webhookURL string) *flaggerv1.Canary 
 	return canary
 }
 
-func TestRunManualTrafficControlHooks_NoHooks(t *testing.T) {
+func TestRunConfirmTrafficIncreaseHooks_NoHooks(t *testing.T) {
 	f := newDeploymentFixture(nil)
 
 	canary := f.canary.DeepCopy()
 	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
 
-	shouldContinue, weight := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
+	shouldContinue := f.ctrl.runConfirmTrafficIncreaseHooks(canary)
 
 	assert.True(t, shouldContinue)
-	assert.Equal(t, 0, weight)
 }
 
-func TestRunManualTrafficControlHooks_InvalidWeight(t *testing.T) {
+func TestRunConfirmTrafficIncreaseHooks_Success(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"weight": "invalid"}`))
 	}))
 	defer ts.Close()
 
-	f := newDeploymentFixture(newDeploymentTestCanaryWithManualIncreaseHook(ts.URL))
-
-	canary := f.canary.DeepCopy()
-	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-
-	shouldContinue, weight := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
-
-	assert.False(t, shouldContinue)
-	assert.Equal(t, canary.Status.CanaryWeight, weight)
-}
-
-func TestRunManualTrafficControlHooks_OutOfRangeWeight(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"weight": "150"}`))
-	}))
-	defer ts.Close()
-
-	f := newDeploymentFixture(newDeploymentTestCanaryWithManualIncreaseHook(ts.URL))
-
-	canary := f.canary.DeepCopy()
-	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-
-	shouldContinue, weight := f.ctrl.runManualTrafficControlHooks(canary, f.deployer, f.router)
-
-	assert.False(t, shouldContinue)
-	assert.Equal(t, canary.Status.CanaryWeight, weight)
-}
-
-func newDeploymentTestCanaryWithManualIncreaseHook(webhookURL string) *flaggerv1.Canary {
 	canary := newDeploymentTestCanary()
 	canary.Spec.Analysis.Webhooks = []flaggerv1.CanaryWebhook{
 		{
-			Name:     "manual-traffic-increase",
-			URL:      webhookURL,
-			Type:     flaggerv1.ManualTrafficControlHook,
-			Retries:  0,
-			Metadata: &map[string]string{"weight": "30"},
+			Name: "confirm-traffic-increase",
+			URL:  ts.URL,
+			Type: flaggerv1.ConfirmTrafficIncreaseHook,
 		},
 	}
-	return canary
+
+	f := newDeploymentFixture(canary)
+
+	canaryObj := f.canary.DeepCopy()
+	canaryObj.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	shouldContinue := f.ctrl.runConfirmTrafficIncreaseHooks(canaryObj)
+
+	assert.True(t, shouldContinue)
+}
+
+func TestRunConfirmTrafficIncreaseHooks_Failure(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer ts.Close()
+
+	canary := newDeploymentTestCanary()
+	canary.Spec.Analysis.Webhooks = []flaggerv1.CanaryWebhook{
+		{
+			Name: "confirm-traffic-increase",
+			URL:  ts.URL,
+			Type: flaggerv1.ConfirmTrafficIncreaseHook,
+		},
+	}
+
+	f := newDeploymentFixture(canary)
+
+	canaryObj := f.canary.DeepCopy()
+	canaryObj.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	shouldContinue := f.ctrl.runConfirmTrafficIncreaseHooks(canaryObj)
+
+	assert.False(t, shouldContinue)
 }

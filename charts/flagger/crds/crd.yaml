@@ -914,6 +914,18 @@ spec:
                 suspend:
                   description: Suspend Canary disabling/pausing all canary runs
                   type: boolean
+                manualStep:
+                  description: Manual step configuration for traffic routing
+                  type: object
+                  properties:
+                    weight:
+                      description: Traffic weight to route to canary when in manual mode
+                      type: integer
+                      minimum: 0
+                      maximum: 100
+                    resume:
+                      description: Indicates if the canary should resume automated traffic shifting
+                      type: boolean
                 analysis:
                   description: Canary analysis for this canary
                   type: object
