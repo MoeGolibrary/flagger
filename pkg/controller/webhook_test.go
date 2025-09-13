@@ -80,12 +80,26 @@ func TestCallWebhook(t *testing.T) {
 		{
 			path: "/testing",
 			body: map[string]any{
-				"name":      "podinfo",
-				"namespace": "default",
-				"phase":     "Progressing",
-				"checksum":  canary.CanaryChecksum(),
+				"name":           "podinfo",
+				"namespace":      "default",
+				"phase":          "Progressing",
+				"checksum":       canary.CanaryChecksum(),
+				"build_id":       "",
+				"canary_weight":  float64(0),
+				"failed_checks":  float64(0),
+				"iterations":     float64(0),
+				"remaining_time": float64(0),
+				"type":           "",
 				"metadata": map[string]any{
-					"key1": "val1",
+					"key1":              "val1",
+					"timestamp":         requests[0].body["metadata"].(map[string]any)["timestamp"],
+					"phase":             "",
+					"failedChecks":      "0",
+					"canaryWeight":      "0",
+					"iterations":        "0",
+					"lastBuildId":       "",
+					"lastAppliedSpec":   "4cb74184589",
+					"lastPromotedSpec":  "",
 				},
 			},
 		},
@@ -121,6 +135,11 @@ func TestCallEventWebhook(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      canaryName,
 			Namespace: canaryNamespace,
+		},
+		Spec: flaggerv1.CanarySpec{
+			Analysis: &flaggerv1.CanaryAnalysis{
+				Interval: "1m",
+			},
 		},
 		Status: flaggerv1.CanaryStatus{
 			Phase: flaggerv1.CanaryPhaseProgressing,
@@ -194,6 +213,11 @@ func TestCallEventWebhookStatusCode(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      canaryName,
 			Namespace: canaryNamespace,
+		},
+		Spec: flaggerv1.CanarySpec{
+			Analysis: &flaggerv1.CanaryAnalysis{
+				Interval: "1m",
+			},
 		},
 		Status: flaggerv1.CanaryStatus{
 			Phase: flaggerv1.CanaryPhaseProgressing,

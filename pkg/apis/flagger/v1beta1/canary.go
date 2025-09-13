@@ -122,6 +122,9 @@ type CanarySpec struct {
 	// pause at this weight until resumed
 	// +optional
 	ManualStep *CanaryManualStep `json:"manualStep,omitempty"`
+
+	// +optional
+	IPRangeRouting *CanaryIPRangeRouting `json:"ipRangeRouting,omitempty"`
 }
 
 // CanaryManualStep defines the manual step configuration for traffic routing
@@ -131,6 +134,30 @@ type CanaryManualStep struct {
 
 	// Resume indicates if the canary should resume automated traffic shifting
 	Resume bool `json:"resume,omitempty"`
+}
+
+type CanaryIPRangeRouting struct {
+	Enabled bool `json:"enabled,omitempty"`
+
+	// +optional
+	Strategy string `json:"strategy,omitempty"`
+
+	// InitialPercentage defines the initial percentage of IP ranges to route to canary
+	// +optional
+	InitialPercentage int `json:"initialPercentage,omitempty"`
+
+	// +optional
+	StepPercentage int `json:"stepPercentage,omitempty"`
+
+	// MaxPercentage defines the maximum percentage of IP ranges to route to canary
+	// +optional
+	MaxPercentage int `json:"maxPercentage,omitempty"`
+
+	// +optional
+	HashFunction string `json:"hashFunction,omitempty"`
+
+	// +optional
+	SlotCount int `json:"slotCount,omitempty"`
 }
 
 // CanaryService defines how ClusterIP services, service mesh or ingress routing objects are generated

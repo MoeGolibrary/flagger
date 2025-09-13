@@ -31,7 +31,7 @@ import (
 func (c *Controller) runConfirmTrafficIncreaseHooks(canary *flaggerv1.Canary) bool {
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.ConfirmTrafficIncreaseHook {
-			err := CallWebhook(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
+			err := c.callConfirmTrafficIncreaseHook(canary, webhook)
 			if err != nil {
 				c.recordEventWarningf(canary, "Halt %s.%s advancement waiting for traffic increase approval %s",
 					canary.Name, canary.Namespace, webhook.Name)
@@ -223,4 +223,47 @@ func (c *Controller) clearManualTrafficControlState(canary *flaggerv1.Canary, ca
 		c.recordEventInfof(canary, "Canary resumed from manual traffic control")
 	}
 	return nil
+}
+
+func (c *Controller) callConfirmTrafficIncreaseHook(canary *flaggerv1.Canary, webhook flaggerv1.CanaryWebhook) error {
+	if canary.Spec.IPRangeRouting != nil && canary.Spec.IPRangeRouting.Enabled {
+		return c.callConfirmTrafficIncreaseHookWithIPRanges(canary, webhook)
+	}
+	
+	return CallWebhook(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
+}
+
+func (c *Controller) callConfirmTrafficIncreaseHookWithIPRanges(canary *flaggerv1.Canary, webhook flaggerv1.CanaryWebhook) error {
+	currentWeight := canary.Status.CanaryWeight
+	if currentWeight == 0 && canary.Spec.IPRangeRouting != nil {
+		currentWeight = canary.Spec.IPRangeRouting.InitialPercentage
+	}
+	
+	payload := flaggerv1.CanaryWebhookPayload{
+		Name:      canary.Name,
+		Namespace: canary.Namespace,
+		Phase:     flaggerv1.CanaryPhaseProgressing,
+		Metadata: map[string]string{
+			"ipRangeRouting.enabled":           "true",
+			"ipRangeRouting.strategy":          canary.Spec.IPRangeRouting.Strategy,
+			"ipRangeRouting.currentPercentage": fmt.Sprintf("%d", currentWeight),
+			"ipRangeRouting.hashFunction":      canary.Spec.IPRangeRouting.HashFunction,
+			"ipRangeRouting.slotCount":         fmt.Sprintf("%d", canary.Spec.IPRangeRouting.SlotCount),
+		},
+	}
+	
+	if webhook.Metadata != nil {
+		for k, v := range *webhook.Metadata {
+			payload.Metadata[k] = v
+		}
+	}
+	
+	return c.callWebhookWithPayload(payload, webhook)
+}
+
+func (c *Controller) callWebhookWithPayload(payload flaggerv1.CanaryWebhookPayload, webhook flaggerv1.CanaryWebhook) error {
+	if len(webhook.Timeout) < 2 {
+		webhook.Timeout = "10s"
+	}
+	return callWebhook(webhook.URL, payload, webhook.Timeout, webhook.Retries)
 }
