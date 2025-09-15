@@ -606,7 +606,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 	canaryWeight int,
 	mirrored bool,
 	newSpec *istiov1beta1.VirtualServiceSpec) {
-	_, primaryName, canaryName := canary.GetServiceNames()
+	apexName, primaryName, canaryName := canary.GetServiceNames()
 
 	// weighted routing (progressive canary)
 	weightedRoute := istiov1beta1.HTTPRoute{
@@ -623,7 +623,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 		},
 	}
 	newSpec.Http = []istiov1beta1.HTTPRoute{
-		makeCustomerRefactorRoute(canary, canaryName),
+		makeCustomerRefactorRoute(canary, apexName),
 		weightedRoute,
 	}
 
@@ -654,7 +654,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 				}
 
 				newSpec.Http = []istiov1beta1.HTTPRoute{
-					makeCustomerRefactorRoute(canary, canaryName),
+					makeCustomerRefactorRoute(canary, apexName),
 					{
 						Match:      canaryMatch,
 						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
@@ -686,7 +686,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 				newSpec.Http[1].Match = append(canaryMatch, stickyRoute.Match...)
 			} else {
 				newSpec.Http = []istiov1beta1.HTTPRoute{
-					makeCustomerRefactorRoute(canary, canaryName),
+					makeCustomerRefactorRoute(canary, apexName),
 					{
 						Name:       canaryRouteName,
 						Match:      canaryMatch,
@@ -899,10 +899,10 @@ func mergeMatchConditions(canary, defaults []istiov1beta1.HTTPMatchRequest) []is
 }
 
 // TODO 去掉或者优化
-func makeCustomerRefactorRoute(canary *flaggerv1.Canary, canaryName string) istiov1beta1.HTTPRoute {
-	host := canaryName
-	if canaryName == "meogo-customer" || canaryName == "meogo-server-customer" || canaryName == "meogo-svc-business-customer" {
-		host = fmt.Sprintf("%s-feature-customer-refactor", canaryName)
+func makeCustomerRefactorRoute(canary *flaggerv1.Canary, apexName string) istiov1beta1.HTTPRoute {
+	host := apexName
+	if apexName == "meogo-customer" || apexName == "meogo-server-customer" || apexName == "meogo-svc-business-customer" {
+		host = fmt.Sprintf("%s-feature-customer-refactor", apexName)
 	}
 
 	// set destination port when an ingress gateway is specified
