@@ -102,14 +102,8 @@ func TestDeploymentController_Promote(t *testing.T) {
 	assert.Equal(t, depSourceAnnotations["app.kubernetes.io/test-annotation-1"], depPrimaryAnnotations["app.kubernetes.io/test-annotation-1"])
 
 	configPrimary, err := mocks.kubeClient.CoreV1().ConfigMaps("default").Get(context.TODO(), "podinfo-config-env-primary", metav1.GetOptions{})
-	// 如果找不到ConfigMap，则使用新的ConfigMap名称
-	if err != nil {
-		configPrimary, err = mocks.kubeClient.CoreV1().ConfigMaps("default").Get(context.TODO(), "podinfo-config-all-env-primary", metav1.GetOptions{})
-		require.NoError(t, err)
-		assert.Equal(t, "red", configPrimary.Data["color"])
-	} else {
-		assert.Equal(t, config2.Data["color"], configPrimary.Data["color"])
-	}
+	require.NoError(t, err)
+	assert.Equal(t, config2.Data["color"], configPrimary.Data["color"])
 
 	value := depPrimary.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].PodAffinityTerm.LabelSelector.MatchExpressions[0].Values[0]
 	assert.Equal(t, "podinfo-primary", value)

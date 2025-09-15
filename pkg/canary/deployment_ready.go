@@ -107,11 +107,6 @@ func (c *DeploymentController) isDeploymentReady(deployment *appsv1.Deployment, 
 			return retriable, fmt.Errorf("waiting for rollout to finish: %d out of %d new replicas have been updated",
 				deployment.Status.UpdatedReplicas, *deployment.Spec.Replicas)
 		}
-		// 如果Replicas为nil，则默认为1
-		if deployment.Spec.Replicas == nil {
-			one := int32(1)
-			deployment.Spec.Replicas = &one
-		}
 
 		// Check if all replicas are available
 		if deployment.Status.AvailableReplicas < *deployment.Spec.Replicas {

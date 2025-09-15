@@ -99,7 +99,6 @@ func newCustomizableFixture(dc deploymentConfigs) (deploymentControllerFixture, 
 		newDeploymentControllerTestConfigMapTrackerDisabled(),
 		newDeploymentControllerTestConfigMapInit(),
 		newDeploymentControllerTestConfigMapInitEnv(),
-		newDeploymentControllerTestConfigMapInitAllEnv(),
 		newDeploymentControllerTestSecret(),
 		newDeploymentControllerTestSecretEnv(),
 		newDeploymentControllerTestSecretVol(),
@@ -108,27 +107,29 @@ func newCustomizableFixture(dc deploymentConfigs) (deploymentControllerFixture, 
 		newDeploymentControllerTestSecretTrackerDisabled(),
 		newDeploymentControllerTestSecretInit(),
 		newDeploymentControllerTestSecretInitEnv(),
-		newDeploymentControllerTestSecretInitAllEnv(),
-		newDeploymentControllerTestInlineCfg(),
 	)
 
 	logger, _ := logger.NewLogger("debug")
 
-	// init controller
 	ctrl := DeploymentController{
 		flaggerClient: flaggerClient,
 		kubeClient:    kubeClient,
 		logger:        logger,
 		labels:        []string{"app", "name"},
-		configTracker: &NopTracker{},
+		configTracker: &ConfigTracker{
+			Logger:        logger,
+			KubeClient:    kubeClient,
+			FlaggerClient: flaggerClient,
+		},
+		includeLabelPrefix: []string{"app.kubernetes.io"},
 	}
 
 	return deploymentControllerFixture{
 		canary:        canary,
 		controller:    ctrl,
+		logger:        logger,
 		flaggerClient: flaggerClient,
 		kubeClient:    kubeClient,
-		logger:        logger,
 	}, kubeClient
 }
 
@@ -997,43 +998,4 @@ func newDeploymentControllerTestV2() *appsv1.Deployment {
 	}
 
 	return d
-}
-
-func newDeploymentControllerTestConfigMapInitAllEnv() *corev1.ConfigMap {
-	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{APIVersion: corev1.SchemeGroupVersion.String()},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "podinfo-config-all-env-primary", // 修改名称以避免冲突
-		},
-		Data: map[string]string{
-			"color": "red",
-		},
-	}
-}
-
-func newDeploymentControllerTestSecretInitAllEnv() *corev1.Secret {
-	return &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{APIVersion: corev1.SchemeGroupVersion.String()},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "podinfo-secret-all-env-primary", // 修改名称以避免冲突
-		},
-		Data: map[string][]byte{
-			"apiKey": []byte("test"),
-		},
-	}
-}
-
-func newDeploymentControllerTestInlineCfg() *corev1.ConfigMap {
-	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{APIVersion: corev1.SchemeGroupVersion.String()},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "podinfo-inline-cfg-primary", // 修改名称以避免冲突
-		},
-		Data: map[string]string{
-			"color": "red",
-		},
-	}
 }

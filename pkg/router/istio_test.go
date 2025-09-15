@@ -587,8 +587,6 @@ func TestIstioRouter_Delegate(t *testing.T) {
 				"mesh",
 			}
 		}
-		// 清空Hosts以触发错误
-		mocks.canary.Spec.Service.Hosts = []string{}
 		mocks.canary.Spec.Service.Delegation = true
 
 		router := &IstioRouter{
@@ -878,7 +876,7 @@ func TestIstioRouter_GetRoutesTCP(t *testing.T) {
 	assert.Equal(t, 0, c)
 
 	// A TCP Canary resource has mirroring disabled
-	assert.True(t, m)
+	assert.False(t, m)
 
 	mocks.canary = newTestMirror()
 
@@ -890,7 +888,7 @@ func TestIstioRouter_GetRoutesTCP(t *testing.T) {
 	assert.Equal(t, 100, p)
 	assert.Equal(t, 0, c)
 
-	// A TCP Canary resource has mirroring disabled
+	// Even for a mirrored canary, TCP Canaries should have mirroring disabled
 	assert.False(t, m)
 }
 
