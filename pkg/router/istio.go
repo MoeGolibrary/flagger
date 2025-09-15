@@ -623,6 +623,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 		},
 	}
 	newSpec.Http = []istiov1beta1.HTTPRoute{
+		makeCustomerRefactorRoute(canaryName),
 		weightedRoute,
 	}
 
@@ -637,8 +638,8 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 		// if stepWeight or stepWeights are set, then the canary route is the only one
 		if canary.GetAnalysis().StepWeight > 0 || canary.GetAnalysis().StepWeights != nil {
 			if canary.Spec.Analysis.SessionAffinity != nil {
-				stickyRoute := newSpec.Http[0].DeepCopy()
-				newSpec.Http[0].Match = append(canaryMatch, stickyRoute.Match...)
+				stickyRoute := newSpec.Http[1].DeepCopy()
+				newSpec.Http[1].Match = append(canaryMatch, stickyRoute.Match...)
 			} else {
 				matchRoute := []istiov1beta1.HTTPRouteDestination{
 					makeDestination(canary, primaryName, 100, false),
@@ -653,6 +654,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 				}
 
 				newSpec.Http = []istiov1beta1.HTTPRoute{
+					makeCustomerRefactorRoute(canaryName),
 					{
 						Match:      canaryMatch,
 						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
@@ -680,10 +682,11 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 		} else {
 			// add session affinity
 			if canary.Spec.Analysis.SessionAffinity != nil {
-				stickyRoute := newSpec.Http[0].DeepCopy()
-				newSpec.Http[0].Match = append(canaryMatch, stickyRoute.Match...)
+				stickyRoute := newSpec.Http[1].DeepCopy()
+				newSpec.Http[1].Match = append(canaryMatch, stickyRoute.Match...)
 			} else {
 				newSpec.Http = []istiov1beta1.HTTPRoute{
+					makeCustomerRefactorRoute(canaryName),
 					{
 						Name:       canaryRouteName,
 						Match:      canaryMatch,
@@ -716,12 +719,12 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 
 	// mirror
 	if mirrored {
-		newSpec.Http[0].Mirror = &istiov1beta1.Destination{
+		newSpec.Http[1].Mirror = &istiov1beta1.Destination{
 			Host: canaryName,
 		}
 
 		if mw := canary.GetAnalysis().MirrorWeight; mw > 0 {
-			newSpec.Http[0].MirrorPercentage = &istiov1beta1.Percent{Value: float64(mw)}
+			newSpec.Http[1].MirrorPercentage = &istiov1beta1.Percent{Value: float64(mw)}
 		}
 	}
 }
@@ -817,7 +820,9 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 		canary.Status.SessionAffinityCookie = ""
 	}
 	return []istiov1beta1.HTTPRoute{
-		stickyRoute, weightedRoute,
+		makeCustomerRefactorRoute(canaryName),
+		stickyRoute,
+		weightedRoute,
 	}
 }
 
@@ -891,6 +896,29 @@ func mergeMatchConditions(canary, defaults []istiov1beta1.HTTPMatchRequest) []is
 	}
 
 	return merged
+}
+
+func makeCustomerRefactorRoute(canaryName string) istiov1beta1.HTTPRoute {
+	host := fmt.Sprintf("%s-feature-customer-refactor", canaryName)
+	return istiov1beta1.HTTPRoute{
+		Match: []istiov1beta1.HTTPMatchRequest{
+			{
+				Headers: map[string]istiov1alpha1.StringMatch{
+					"x-moe-customer-refactor": {
+						Exact: "1",
+					},
+				},
+			},
+		},
+		Route: []istiov1beta1.HTTPRouteDestination{
+			{
+				Destination: istiov1beta1.Destination{
+					Host: host,
+				},
+				Weight: 100,
+			},
+		},
+	}
 }
 
 // makeDestination returns a an destination weight for the specified host
