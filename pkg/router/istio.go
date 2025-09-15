@@ -606,7 +606,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 	canaryWeight int,
 	mirrored bool,
 	newSpec *istiov1beta1.VirtualServiceSpec) {
-	apexName, primaryName, canaryName := canary.GetServiceNames()
+	_, primaryName, canaryName := canary.GetServiceNames()
 
 	// weighted routing (progressive canary)
 	weightedRoute := istiov1beta1.HTTPRoute{
@@ -623,7 +623,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 		},
 	}
 	newSpec.Http = []istiov1beta1.HTTPRoute{
-		makeCustomerRefactorRoute(canary, apexName),
+		makeCustomerRefactorRoute(canary),
 		weightedRoute,
 	}
 
@@ -654,7 +654,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 				}
 
 				newSpec.Http = []istiov1beta1.HTTPRoute{
-					makeCustomerRefactorRoute(canary, apexName),
+					makeCustomerRefactorRoute(canary),
 					{
 						Match:      canaryMatch,
 						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
@@ -686,7 +686,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 				newSpec.Http[1].Match = append(canaryMatch, stickyRoute.Match...)
 			} else {
 				newSpec.Http = []istiov1beta1.HTTPRoute{
-					makeCustomerRefactorRoute(canary, apexName),
+					makeCustomerRefactorRoute(canary),
 					{
 						Name:       canaryRouteName,
 						Match:      canaryMatch,
@@ -820,7 +820,7 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 		canary.Status.SessionAffinityCookie = ""
 	}
 	return []istiov1beta1.HTTPRoute{
-		makeCustomerRefactorRoute(canary, canaryName),
+		makeCustomerRefactorRoute(canary),
 		stickyRoute,
 		weightedRoute,
 	}
@@ -899,7 +899,8 @@ func mergeMatchConditions(canary, defaults []istiov1beta1.HTTPMatchRequest) []is
 }
 
 // TODO 去掉或者优化
-func makeCustomerRefactorRoute(canary *flaggerv1.Canary, apexName string) istiov1beta1.HTTPRoute {
+func makeCustomerRefactorRoute(canary *flaggerv1.Canary) istiov1beta1.HTTPRoute {
+	apexName, _, _ := canary.GetServiceNames()
 	host := apexName
 	if apexName == "meogo-customer" || apexName == "meogo-server-customer" || apexName == "meogo-svc-business-customer" {
 		host = fmt.Sprintf("%s-feature-customer-refactor", apexName)
