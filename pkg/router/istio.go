@@ -916,6 +916,13 @@ func makeCustomerRefactorRoute(canaryName string) istiov1beta1.HTTPRoute {
 					Host: host,
 				},
 				Weight: 100,
+				Headers: &istiov1beta1.Headers{
+					Request: &istiov1beta1.HeaderOperations{
+						Set: map[string]string{
+							"x-moe-customer-refactor": "1",
+						},
+					},
+				},
 			},
 		},
 	}
