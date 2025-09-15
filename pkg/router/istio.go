@@ -776,12 +776,12 @@ func (ir *IstioRouter) generateAttributeRangeRoute(canary *flaggerv1.Canary, can
 
 	if routing.HeaderName != "" {
 		// Match on header
-		match.Headers = map[string]istiov1beta1.StringMatch{
+		match.Headers = map[string]istiov1alpha1.StringMatch{
 			routing.HeaderName: {},
 		}
 	} else if routing.ParameterName != "" {
 		// Match on query parameter
-		match.QueryParams = map[string]istiov1beta1.StringMatch{
+		match.QueryParams = map[string]istiov1alpha1.StringMatch{
 			routing.ParameterName: {},
 		}
 	} else {

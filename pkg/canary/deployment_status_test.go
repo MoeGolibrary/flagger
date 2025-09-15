@@ -44,11 +44,13 @@ func TestDeploymentController_SyncStatus(t *testing.T) {
 	assert.Equal(t, status.Phase, res.Status.Phase)
 	assert.Equal(t, status.FailedChecks, res.Status.FailedChecks)
 
-	require.NotNil(t, res.Status.TrackedConfigs)
-	configs := *res.Status.TrackedConfigs
-	secret := newDeploymentControllerTestSecret()
-	_, exists := configs["secret/"+secret.GetName()]
-	assert.True(t, exists, "Secret %s not found in status", secret.GetName())
+	// 检查TrackedConfigs是否为nil
+	if assert.NotNil(t, res.Status.TrackedConfigs, "TrackedConfigs should not be nil") {
+		configs := *res.Status.TrackedConfigs
+		secret := newDeploymentControllerTestSecret()
+		_, exists := configs["secret/"+secret.GetName()]
+		assert.True(t, exists, "Secret %s not found in status", secret.GetName())
+	}
 }
 
 func TestDeploymentController_SetFailedChecks(t *testing.T) {

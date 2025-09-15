@@ -84,9 +84,11 @@ func TestDeploymentController_isDeploymentReady(t *testing.T) {
 	dp = &appsv1.Deployment{Status: appsv1.DeploymentStatus{
 		UpdatedReplicas:   2,
 		AvailableReplicas: 1,
+		Replicas:          2,
 	}}
-	_, err = mocks.controller.isDeploymentReady(dp, 0, 100)
+	retryable, err = mocks.controller.isDeploymentReady(dp, 0, 100)
 	assert.Error(t, err)
+	assert.True(t, retryable)
 	assert.True(t, strings.Contains(err.Error(), "available"))
 
 	// ProgressDeadlineExceeded

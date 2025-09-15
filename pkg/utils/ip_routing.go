@@ -60,7 +60,7 @@ func (calc *IPRangeCalculator) calculateConsistentHashRanges(percentage int) ([]
 
 func (calc *IPRangeCalculator) calculateRangeBasedRanges(percentage int) ([]string, error) {
 	var ranges []string
-	
+
 	subnetsNeeded := (256 * percentage) / 100
 	if subnetsNeeded == 0 && percentage > 0 {
 		subnetsNeeded = 1

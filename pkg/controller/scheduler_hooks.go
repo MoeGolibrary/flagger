@@ -229,7 +229,7 @@ func (c *Controller) callConfirmTrafficIncreaseHook(canary *flaggerv1.Canary, we
 	if canary.Spec.IPRangeRouting != nil && canary.Spec.IPRangeRouting.Enabled {
 		return c.callConfirmTrafficIncreaseHookWithIPRanges(canary, webhook)
 	}
-	
+
 	return CallWebhook(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
 }
 
@@ -238,7 +238,7 @@ func (c *Controller) callConfirmTrafficIncreaseHookWithIPRanges(canary *flaggerv
 	if currentWeight == 0 && canary.Spec.IPRangeRouting != nil {
 		currentWeight = canary.Spec.IPRangeRouting.InitialPercentage
 	}
-	
+
 	payload := flaggerv1.CanaryWebhookPayload{
 		Name:      canary.Name,
 		Namespace: canary.Namespace,
@@ -251,13 +251,13 @@ func (c *Controller) callConfirmTrafficIncreaseHookWithIPRanges(canary *flaggerv
 			"ipRangeRouting.slotCount":         fmt.Sprintf("%d", canary.Spec.IPRangeRouting.SlotCount),
 		},
 	}
-	
+
 	if webhook.Metadata != nil {
 		for k, v := range *webhook.Metadata {
 			payload.Metadata[k] = v
 		}
 	}
-	
+
 	return c.callWebhookWithPayload(payload, webhook)
 }
 

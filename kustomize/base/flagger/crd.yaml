@@ -966,6 +966,52 @@ spec:
                       type: integer
                       minimum: 100
                       maximum: 10000
+                attributeRangeRouting:
+                  description: Attribute-based canary traffic routing configuration
+                  type: object
+                  properties:
+                    enabled:
+                      description: Enable attribute-based routing
+                      type: boolean
+                    headerName:
+                      description: Header name to use for routing decisions
+                      type: string
+                    parameterName:
+                      description: Query parameter name to use for routing decisions
+                      type: string
+                    strategy:
+                      description: Routing strategy (consistent-hash or range-based)
+                      type: string
+                      enum:
+                        - consistent-hash
+                        - range-based
+                    initialPercentage:
+                      description: Initial percentage of attribute values to route to canary
+                      type: integer
+                      minimum: 0
+                      maximum: 100
+                    stepPercentage:
+                      description: Percentage increment for each traffic increase step
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+                    maxPercentage:
+                      description: Maximum percentage of attribute values to route to canary
+                      type: integer
+                      minimum: 0
+                      maximum: 100
+                    hashFunction:
+                      description: Hash function for consistent hashing (fnv, md5, sha256)
+                      type: string
+                      enum:
+                        - fnv
+                        - md5
+                        - sha256
+                    slotCount:
+                      description: Total number of hash slots for consistent hashing
+                      type: integer
+                      minimum: 100
+                      maximum: 10000
                 analysis:
                   description: Canary analysis for this canary
                   type: object

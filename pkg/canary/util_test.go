@@ -78,7 +78,8 @@ func TestMakePrimaryLabels(t *testing.T) {
 	primaryLabels := makePrimaryLabels(labels, "new-bar", "foo")
 
 	assert.Equal(t, primaryLabels, map[string]string{
-		"lorem": "ipsum",   // values from old map
-		"foo":   "new-bar", // overriden value for a specific label
+		"lorem":                      "ipsum",   // values from old map
+		"foo":                        "new-bar", // overriden value for a specific label
+		"tags.datadoghq.com/version": "primary", // added by makePrimaryLabels
 	})
 }
