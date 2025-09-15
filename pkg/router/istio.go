@@ -623,7 +623,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 		},
 	}
 	newSpec.Http = []istiov1beta1.HTTPRoute{
-		makeCustomerRefactorRoute(canaryName),
+		makeCustomerRefactorRoute(canary, canaryName),
 		weightedRoute,
 	}
 
@@ -654,7 +654,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 				}
 
 				newSpec.Http = []istiov1beta1.HTTPRoute{
-					makeCustomerRefactorRoute(canaryName),
+					makeCustomerRefactorRoute(canary, canaryName),
 					{
 						Match:      canaryMatch,
 						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
@@ -686,7 +686,7 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 				newSpec.Http[1].Match = append(canaryMatch, stickyRoute.Match...)
 			} else {
 				newSpec.Http = []istiov1beta1.HTTPRoute{
-					makeCustomerRefactorRoute(canaryName),
+					makeCustomerRefactorRoute(canary, canaryName),
 					{
 						Name:       canaryRouteName,
 						Match:      canaryMatch,
@@ -820,7 +820,7 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 		canary.Status.SessionAffinityCookie = ""
 	}
 	return []istiov1beta1.HTTPRoute{
-		makeCustomerRefactorRoute(canaryName),
+		makeCustomerRefactorRoute(canary, canaryName),
 		stickyRoute,
 		weightedRoute,
 	}
@@ -898,8 +898,48 @@ func mergeMatchConditions(canary, defaults []istiov1beta1.HTTPMatchRequest) []is
 	return merged
 }
 
-func makeCustomerRefactorRoute(canaryName string) istiov1beta1.HTTPRoute {
-	host := fmt.Sprintf("%s-feature-customer-refactor", canaryName)
+// TODO 去掉或者优化
+func makeCustomerRefactorRoute(canary *flaggerv1.Canary, canaryName string) istiov1beta1.HTTPRoute {
+	host := canaryName
+	if canaryName == "meogo-customer" || canaryName == "meogo-server-customer" || canaryName == "meogo-svc-business-customer" {
+		host = fmt.Sprintf("%s-feature-customer-refactor", canaryName)
+	}
+
+	// set destination port when an ingress gateway is specified
+	if canary.Spec.Service.PortDiscovery &&
+		(len(canary.Spec.Service.Gateways) > 0 &&
+			canary.Spec.Service.Gateways[0] != "mesh" || canary.Spec.Service.Delegation) {
+		return istiov1beta1.HTTPRoute{
+			Match: []istiov1beta1.HTTPMatchRequest{
+				{
+					Headers: map[string]istiov1alpha1.StringMatch{
+						"x-moe-customer-refactor": {
+							Exact: "1",
+						},
+					},
+				},
+			},
+			Route: []istiov1beta1.HTTPRouteDestination{
+				{
+					Destination: istiov1beta1.Destination{
+						Host: host,
+						Port: &istiov1beta1.PortSelector{
+							Number: uint32(canary.Spec.Service.Port),
+						},
+					},
+					Headers: &istiov1beta1.Headers{
+						Request: &istiov1beta1.HeaderOperations{
+							Set: map[string]string{
+								"x-moe-customer-refactor": "1",
+							},
+						},
+					},
+					Weight: 100,
+				},
+			},
+		}
+	}
+
 	return istiov1beta1.HTTPRoute{
 		Match: []istiov1beta1.HTTPMatchRequest{
 			{
@@ -915,7 +955,6 @@ func makeCustomerRefactorRoute(canaryName string) istiov1beta1.HTTPRoute {
 				Destination: istiov1beta1.Destination{
 					Host: host,
 				},
-				Weight: 100,
 				Headers: &istiov1beta1.Headers{
 					Request: &istiov1beta1.HeaderOperations{
 						Set: map[string]string{
@@ -923,6 +962,7 @@ func makeCustomerRefactorRoute(canaryName string) istiov1beta1.HTTPRoute {
 						},
 					},
 				},
+				Weight: 100,
 			},
 		},
 	}
