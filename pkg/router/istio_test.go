@@ -874,6 +874,8 @@ func TestIstioRouter_GetRoutesTCP(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 100, p)
 	assert.Equal(t, 0, c)
+
+	// A TCP Canary resource has mirroring disabled
 	assert.False(t, m)
 
 	mocks.canary = newTestMirror()
@@ -886,6 +888,171 @@ func TestIstioRouter_GetRoutesTCP(t *testing.T) {
 	assert.Equal(t, 100, p)
 	assert.Equal(t, 0, c)
 
-	// A TCP Canary resource has mirroring disabled
+	// Even for a mirrored canary, TCP Canaries should have mirroring disabled
 	assert.False(t, m)
+}
+
+func TestIstioRouter_AttributeRangeRouting(t *testing.T) {
+	mocks := newFixture(nil)
+	router := &IstioRouter{
+		logger:        mocks.logger,
+		istioClient:   mocks.meshClient,
+		kubeClient:    mocks.kubeClient,
+		flaggerClient: mocks.flaggerClient,
+	}
+
+	// 创建一个带 attribute range routing 配置的 canary
+	canary := newTestCanary()
+	canary.Spec.AttributeRangeRouting = &flaggerv1.CanaryAttributeRangeRouting{
+		Enabled:           true,
+		HeaderName:        "X-User-ID",
+		Strategy:          "consistent-hash",
+		InitialPercentage: 10,
+		StepPercentage:    10,
+		MaxPercentage:     50,
+		HashFunction:      "fnv",
+		SlotCount:         1000,
+	}
+
+	// 测试 reconcile 过程
+	err := router.Reconcile(canary)
+	require.NoError(t, err)
+
+	// 获取创建的 VirtualService
+	vs, err := router.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Get(context.TODO(), "podinfo", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	// 验证 VirtualService 是否创建成功
+	assert.NotNil(t, vs)
+	assert.Equal(t, "podinfo", vs.Name)
+	assert.Equal(t, canary.Namespace, vs.Namespace)
+
+	// 测试 SetRoutes 方法
+	err = router.SetRoutes(canary, 90, 10, false)
+	require.NoError(t, err)
+
+	// 再次获取 VirtualService 验证更新
+	vs, err = router.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Get(context.TODO(), "podinfo", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	// 验证路由规则
+	assert.NotEmpty(t, vs.Spec.Http)
+
+	// 检查是否包含 attribute range 路由规则
+	hasAttributeRoute := false
+	for _, httpRoute := range vs.Spec.Http {
+		if httpRoute.Name == "attribute-range-canary" {
+			hasAttributeRoute = true
+			// 验证匹配条件
+			assert.NotEmpty(t, httpRoute.Match)
+			if len(httpRoute.Match) > 0 {
+				match := httpRoute.Match[0]
+				// 验证是否匹配指定的 header
+				_, hasHeaderMatch := match.Headers["X-User-ID"]
+				assert.True(t, hasHeaderMatch)
+			}
+			break
+		}
+	}
+	assert.True(t, hasAttributeRoute, "Should have attribute range routing rule")
+}
+
+func TestIstioRouter_IPRangeRouting(t *testing.T) {
+	mocks := newFixture(nil)
+	router := &IstioRouter{
+		logger:        mocks.logger,
+		istioClient:   mocks.meshClient,
+		kubeClient:    mocks.kubeClient,
+		flaggerClient: mocks.flaggerClient,
+	}
+
+	// 创建一个带 IP range routing 配置的 canary
+	canary := newTestCanary()
+	canary.Spec.IPRangeRouting = &flaggerv1.CanaryIPRangeRouting{
+		Enabled:           true,
+		Strategy:          "consistent-hash",
+		InitialPercentage: 10,
+		StepPercentage:    10,
+		MaxPercentage:     50,
+		HashFunction:      "fnv",
+		SlotCount:         1000,
+	}
+
+	// 测试 reconcile 过程
+	err := router.Reconcile(canary)
+	require.NoError(t, err)
+
+	// 获取创建的 VirtualService
+	vs, err := router.istioClient.NetworkingV1beta1().VirtualServices(canary.Namespace).Get(context.TODO(), "podinfo", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	// 验证 VirtualService 是否创建成功
+	assert.NotNil(t, vs)
+	assert.Equal(t, "podinfo", vs.Name)
+	assert.Equal(t, canary.Namespace, vs.Namespace)
+}
+
+func TestIstioRouter_GenerateAttributeRangeRoute(t *testing.T) {
+	mocks := newFixture(nil)
+	router := &IstioRouter{
+		logger:        mocks.logger,
+		istioClient:   mocks.meshClient,
+		kubeClient:    mocks.kubeClient,
+		flaggerClient: mocks.flaggerClient,
+	}
+
+	// 测试用例1: 启用且指定 header name
+	canary := newTestCanary()
+	canary.Spec.AttributeRangeRouting = &flaggerv1.CanaryAttributeRangeRouting{
+		Enabled:    true,
+		HeaderName: "X-User-ID",
+	}
+
+	route, err := router.generateAttributeRangeRoute(canary, 10)
+	assert.NoError(t, err)
+	assert.NotNil(t, route)
+	assert.Equal(t, "attribute-range-canary", route.Name)
+	assert.NotEmpty(t, route.Match)
+
+	// 验证匹配条件包含指定的 header
+	match := route.Match[0]
+	_, hasHeaderMatch := match.Headers["X-User-ID"]
+	assert.True(t, hasHeaderMatch)
+
+	// 测试用例2: 启用且指定 parameter name
+	canary2 := newTestCanary()
+	canary2.Spec.AttributeRangeRouting = &flaggerv1.CanaryAttributeRangeRouting{
+		Enabled:       true,
+		ParameterName: "userId",
+	}
+
+	route2, err := router.generateAttributeRangeRoute(canary2, 10)
+	assert.NoError(t, err)
+	assert.NotNil(t, route2)
+
+	// 验证匹配条件包含指定的查询参数
+	match2 := route2.Match[0]
+	_, hasParamMatch := match2.QueryParams["userId"]
+	assert.True(t, hasParamMatch)
+
+	// 测试用例3: 未启用
+	canary3 := newTestCanary()
+	canary3.Spec.AttributeRangeRouting = &flaggerv1.CanaryAttributeRangeRouting{
+		Enabled:    false,
+		HeaderName: "X-User-ID",
+	}
+
+	route3, err := router.generateAttributeRangeRoute(canary3, 10)
+	assert.NoError(t, err)
+	assert.Nil(t, route3)
+
+	// 测试用例4: 未指定 header 或 parameter
+	canary4 := newTestCanary()
+	canary4.Spec.AttributeRangeRouting = &flaggerv1.CanaryAttributeRangeRouting{
+		Enabled: true,
+	}
+
+	route4, err := router.generateAttributeRangeRoute(canary4, 10)
+	assert.NoError(t, err)
+	assert.Nil(t, route4)
 }
