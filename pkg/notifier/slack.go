@@ -136,22 +136,42 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 					slack.NewTextBlockObject("plain_text", "No", false, false),
 				),
 			))
-		}
 
-		// 如果canaryId不为空，添加人工介入控制按钮
-		if canaryId != "" {
+			//添加人工介入控制按钮和一个权重输入框
+
+			// 创建输入框元素
+			weightInput := slack.NewPlainTextInputBlockElement(
+				&slack.TextBlockObject{
+					Type: "plain_text",
+					Text: "Weight (0.0-100.0)",
+				},
+				"weight_input",
+			)
+			weightInput.Placeholder = &slack.TextBlockObject{
+				Type: "plain_text",
+				Text: "Enter weight",
+			}
+
+			// 创建输入框区块
+			inputBlock := slack.NewInputBlock(
+				"weight_input_block",
+				&slack.TextBlockObject{
+					Type: "plain_text",
+					Text: "Weight",
+				},
+				&slack.TextBlockObject{
+					Type: "plain_text",
+					Text: "Enter weight(0.0-100.0)",
+				},
+				weightInput,
+			)
+			blocks = append(blocks, inputBlock)
+
 			// Pause at Weight button
 			elements = append(elements, slack.NewButtonBlockElement(
 				"pause_at_weight",
 				canaryId,
 				slack.NewTextBlockObject("plain_text", "Pause at Weight", false, false),
-			).WithStyle(slack.StylePrimary))
-
-			// Resume button
-			elements = append(elements, slack.NewButtonBlockElement(
-				"resume_canary",
-				canaryId,
-				slack.NewTextBlockObject("plain_text", "Resume", false, false),
 			).WithStyle(slack.StylePrimary))
 
 			// Set Weight button
@@ -160,7 +180,15 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 				canaryId,
 				slack.NewTextBlockObject("plain_text", "Set Weight", false, false),
 			).WithStyle(slack.StylePrimary))
+
+			// Resume button
+			elements = append(elements, slack.NewButtonBlockElement(
+				"resume_canary",
+				canaryId,
+				slack.NewTextBlockObject("plain_text", "Resume", false, false),
+			).WithStyle(slack.StylePrimary))
 		}
+
 		if len(elements) > 0 {
 			actionsBlock := slack.NewActionBlock(
 				"actions",
