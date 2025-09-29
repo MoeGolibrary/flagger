@@ -67,12 +67,23 @@ const (
 	CanaryPhaseTerminated CanaryPhase = "Terminated"
 )
 
+// CanaryManualState holds the state of a manual canary intervention
+type CanaryManualState struct {
+	Weight    *int   `json:"weight,omitempty"`
+	Paused    bool   `json:"paused,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
+}
+
 // CanaryStatus is used for state persistence (read-only)
 type CanaryStatus struct {
 	Phase        CanaryPhase `json:"phase"`
 	FailedChecks int         `json:"failedChecks"`
 	CanaryWeight int         `json:"canaryWeight"`
 	Iterations   int         `json:"iterations"`
+	// +optional
+	ManualState *CanaryManualState `json:"manualState,omitempty"`
+	// +optional
+	LastAppliedManualTimestamp string `json:"lastAppliedManualTimestamp,omitempty"`
 	// +optional
 	PreviousSessionAffinityCookie string `json:"previousSessionAffinityCookie,omitempty"`
 	// +optional

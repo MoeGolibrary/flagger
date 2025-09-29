@@ -32,14 +32,19 @@ import (
 )
 
 func callWebhook(webhook string, payload interface{}, timeout string, retries int) error {
+	_, err := callWebhookWithResponse(webhook, payload, timeout, retries)
+	return err
+}
+
+func callWebhookWithResponse(webhook string, payload interface{}, timeout string, retries int) ([]byte, error) {
 	payloadBin, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	hook, err := url.Parse(webhook)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	httpClient := retryablehttp.NewClient()
@@ -48,7 +53,7 @@ func callWebhook(webhook string, payload interface{}, timeout string, retries in
 
 	req, err := retryablehttp.NewRequest("POST", hook.String(), bytes.NewBuffer(payloadBin))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -58,27 +63,27 @@ func callWebhook(webhook string, payload interface{}, timeout string, retries in
 	}
 	t, err := time.ParseDuration(timeout)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	httpClient.HTTPClient.Timeout = t
 
 	r, err := httpClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer r.Body.Close()
 
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
-		return fmt.Errorf("error reading body: %s", err.Error())
+		return nil, fmt.Errorf("error reading body: %s", err.Error())
 	}
 
 	if r.StatusCode > 202 {
-		return errors.New(string(b))
+		return b, errors.New(string(b))
 	}
 
-	return nil
+	return b, nil
 }
 
 // CallWebhook does a HTTP POST to an external service and

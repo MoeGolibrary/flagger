@@ -1383,6 +1383,19 @@ spec:
                 iterations:
                   description: Iteration count of the current canary analysis
                   type: number
+                manualState:
+                  description: Holds the state of a manual canary intervention.
+                  type: object
+                  properties:
+                    weight:
+                      type: integer
+                    paused:
+                      type: boolean
+                    timestamp:
+                      type: string
+                lastAppliedManualTimestamp:
+                  description: LastAppliedManualTimestamp of a manual canary intervention.
+                  type: string
                 trackedConfigs:
                   description: TrackedConfig of this canary
                   additionalProperties:
