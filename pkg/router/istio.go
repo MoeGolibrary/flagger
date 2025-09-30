@@ -900,8 +900,8 @@ func mergeMatchConditions(canary, defaults []istiov1beta1.HTTPMatchRequest) []is
 
 // TODO 去掉或者优化
 func makeCustomerRefactorRoute(canary *flaggerv1.Canary) istiov1beta1.HTTPRoute {
-	apexName, _, _ := canary.GetServiceNames()
-	host := apexName
+	apexName, primaryName, _ := canary.GetServiceNames()
+	host := primaryName
 	if apexName == "moego-customer" || apexName == "moego-service-customer" || apexName == "moego-svc-business-customer" {
 		host = fmt.Sprintf("%s-feature-customer-refactor", apexName)
 	}
