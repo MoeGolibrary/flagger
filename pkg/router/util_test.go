@@ -69,3 +69,70 @@ func TestIncludeLabelsNoIncludes(t *testing.T) {
 
 	assert.Equal(t, map[string]string{}, filteredLabels)
 }
+
+func TestFilterMetadata(t *testing.T) {
+	// Test with nil map
+	result := filterMetadata(nil)
+	assert.NotNil(t, result)
+	assert.Equal(t, "disabled", result["kustomize.toolkit.fluxcd.io/reconcile"])
+	assert.Equal(t, "disabled", result["helm.toolkit.fluxcd.io/driftDetection"])
+
+	// Test with existing map
+	meta := map[string]string{
+		"key1": "value1",
+		"key2": "value2",
+	}
+
+	result = filterMetadata(meta)
+	assert.Equal(t, "value1", result["key1"])
+	assert.Equal(t, "value2", result["key2"])
+	assert.Equal(t, "disabled", result["kustomize.toolkit.fluxcd.io/reconcile"])
+	assert.Equal(t, "disabled", result["helm.toolkit.fluxcd.io/driftDetection"])
+
+	// Test that it overrides existing toolkit keys
+	meta = map[string]string{
+		"kustomize.toolkit.fluxcd.io/reconcile": "enabled",
+		"key1":                                  "value1",
+	}
+
+	result = filterMetadata(meta)
+	assert.Equal(t, "value1", result["key1"])
+	assert.Equal(t, "disabled", result["kustomize.toolkit.fluxcd.io/reconcile"])
+}
+
+func TestIncludeLabelsByPrefixEdgeCases(t *testing.T) {
+	// Test with empty labels
+	labels := map[string]string{}
+	includeLabelPrefix := []string{"foo"}
+
+	filteredLabels := includeLabelsByPrefix(labels, includeLabelPrefix)
+	assert.Equal(t, map[string]string{}, filteredLabels)
+
+	// Test with empty prefixes
+	labels = map[string]string{
+		"foo": "foo-value",
+		"bar": "bar-value",
+	}
+	includeLabelPrefix = []string{}
+
+	filteredLabels = includeLabelsByPrefix(labels, includeLabelPrefix)
+	assert.Equal(t, map[string]string{}, filteredLabels)
+
+	// Test with nil prefixes
+	filteredLabels = includeLabelsByPrefix(labels, nil)
+	assert.Equal(t, map[string]string{}, filteredLabels)
+
+	// Test with multiple matching prefixes
+	labels = map[string]string{
+		"foo-key": "foo-value",
+		"bar-key": "bar-value",
+		"baz-key": "baz-value",
+	}
+	includeLabelPrefix = []string{"foo", "bar"}
+
+	filteredLabels = includeLabelsByPrefix(labels, includeLabelPrefix)
+	assert.Equal(t, map[string]string{
+		"foo-key": "foo-value",
+		"bar-key": "bar-value",
+	}, filteredLabels)
+}

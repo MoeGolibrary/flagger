@@ -76,21 +76,34 @@ func TestCallWebhook(t *testing.T) {
 		flaggerv1.CanaryPhaseProgressing, hook)
 	require.NoError(t, err)
 
-	want := []testRequest{
-		{
-			path: "/testing",
-			body: map[string]any{
-				"name":      "podinfo",
-				"namespace": "default",
-				"phase":     "Progressing",
-				"checksum":  canary.CanaryChecksum(),
-				"metadata": map[string]any{
-					"key1": "val1",
-				},
-			},
-		},
-	}
-	require.EqualValues(t, want, requests)
+	// Check that we have the expected request
+	require.Len(t, requests, 1)
+	req := requests[0]
+	require.Equal(t, "/testing", req.path)
+
+	// Check the main fields
+	body := req.body
+	require.Equal(t, "podinfo", body["name"])
+	require.Equal(t, "default", body["namespace"])
+	require.Equal(t, "Progressing", body["phase"])
+	require.Equal(t, canary.CanaryChecksum(), body["checksum"])
+	require.Equal(t, 0.0, body["failed_checks"])
+	require.Equal(t, 0.0, body["canary_weight"])
+	require.Equal(t, 0.0, body["iterations"])
+	require.Equal(t, "", body["build_id"])
+	require.Equal(t, 0.0, body["remaining_time"])
+	require.Equal(t, "", body["type"])
+
+	// Check metadata
+	metadata := body["metadata"].(map[string]any)
+	require.Equal(t, "val1", metadata["key1"])
+	require.Equal(t, "0", metadata["canaryWeight"])
+	require.Equal(t, "0", metadata["failedChecks"])
+	require.Equal(t, "0", metadata["iterations"])
+	require.Equal(t, "4cb74184589", metadata["lastAppliedSpec"])
+	require.Equal(t, "", metadata["lastBuildId"])
+	require.Equal(t, "", metadata["lastPromotedSpec"])
+	require.Equal(t, "", metadata["phase"])
 }
 
 func TestCallWebhook_StatusCode(t *testing.T) {
@@ -121,6 +134,9 @@ func TestCallEventWebhook(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      canaryName,
 			Namespace: canaryNamespace,
+		},
+		Spec: flaggerv1.CanarySpec{
+			Analysis: &flaggerv1.CanaryAnalysis{},
 		},
 		Status: flaggerv1.CanaryStatus{
 			Phase: flaggerv1.CanaryPhaseProgressing,
@@ -194,6 +210,9 @@ func TestCallEventWebhookStatusCode(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      canaryName,
 			Namespace: canaryNamespace,
+		},
+		Spec: flaggerv1.CanarySpec{
+			Analysis: &flaggerv1.CanaryAnalysis{},
 		},
 		Status: flaggerv1.CanaryStatus{
 			Phase: flaggerv1.CanaryPhaseProgressing,

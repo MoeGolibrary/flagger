@@ -21,6 +21,9 @@ import (
 	"fmt"
 	"testing"
 
+	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
+	istiov1alpha1 "github.com/fluxcd/flagger/pkg/apis/istio/common/v1alpha1"
+	istiov1beta1 "github.com/fluxcd/flagger/pkg/apis/istio/v1beta1"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -120,6 +123,101 @@ func TestSkipperRouter_GetSetRoutes(t *testing.T) {
 		})
 	}
 
+}
+
+func TestSkipperRouter_ABTesting(t *testing.T) {
+	assert := assert.New(t)
+	mocks := newFixture(nil)
+
+	// Create a canary with A/B testing configuration
+	abtestCanary := mocks.ingressCanary.DeepCopy()
+	abtestCanary.Name = "abtest"
+	abtestCanary.Spec.Analysis = &flaggerv1.CanaryAnalysis{
+		Iterations: 10,
+		Match: []istiov1beta1.HTTPMatchRequest{
+			{
+				Headers: map[string]istiov1alpha1.StringMatch{
+					"x-test": {
+						Exact: "test-value",
+					},
+				},
+			},
+		},
+	}
+
+	// Create the required deployment
+	abtestDeployment := newTestABTestDeployment()
+	abtestDeployment.Name = "abtest"
+	abtestDeployment.Spec.Template.Labels["app"] = "abtest"
+	_, err := mocks.kubeClient.AppsV1().Deployments("default").Create(context.TODO(), abtestDeployment, metav1.CreateOptions{})
+	assert.NoError(err)
+
+	// Create the ingress for A/B testing
+	abtestIngress := newTestIngress()
+	abtestIngress.Name = "abtest"
+	abtestIngress.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = "abtest"
+	_, err = mocks.kubeClient.NetworkingV1().Ingresses("default").Create(context.TODO(), abtestIngress, metav1.CreateOptions{})
+	assert.NoError(err)
+
+	router := &SkipperRouter{
+		kubeClient: mocks.kubeClient,
+		logger:     mocks.logger,
+	}
+
+	// Reconcile to create the canary ingress
+	assert.NoError(router.Reconcile(abtestCanary))
+
+	// Test initial routes
+	p, c, m, err := router.GetRoutes(abtestCanary)
+	assert.NoError(err)
+	assert.Equal(100, p)
+	assert.Equal(0, c)
+	assert.Equal(false, m)
+
+	// Test setting routes for A/B testing
+	assert.NoError(router.SetRoutes(abtestCanary, 100, 0, false))
+
+	// Verify the canary ingress was updated
+	canaryName := fmt.Sprintf("%s-canary", abtestCanary.Spec.IngressRef.Name)
+	inCanary, err := router.kubeClient.NetworkingV1().Ingresses("default").Get(
+		context.TODO(), canaryName, metav1.GetOptions{})
+	assert.NoError(err)
+	assert.JSONEq(`{"abtest-primary": 100,"abtest-canary": 0}`, inCanary.Annotations["zalando.org/backend-weights"])
+}
+
+func TestSkipperRouter_RemovePredicate(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      string
+		toRemove string
+		want     string
+	}{
+		{
+			name:     "remove predicate from middle",
+			raw:      `Weight(100) && Host(/^my-host-header\.example\.org$/) && False() && Method("GET")`,
+			toRemove: "False()",
+			want:     `Weight(100) && Host(/^my-host-header\.example\.org$/) && Method("GET")`,
+		},
+		{
+			name:     "remove only predicate",
+			raw:      "False()",
+			toRemove: "False()",
+			want:     "",
+		},
+		{
+			name:     "remove non-existent predicate",
+			raw:      `Weight(100) && Host(/^my-host-header\.example\.org$/)`,
+			toRemove: "False()",
+			want:     `Weight(100) && Host(/^my-host-header\.example\.org$)`,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, removePredicate(tt.raw, tt.toRemove))
+		})
+	}
 }
 
 func Test_insertPredicate(t *testing.T) {

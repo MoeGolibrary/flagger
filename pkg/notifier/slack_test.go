@@ -48,8 +48,8 @@ func TestSlack_Post(t *testing.T) {
 		require.NotNil(t, payload.Blocks)
 		blocks := payload.Blocks.BlockSet
 
-		// 应该有 header, section 和 actions 三个 blocks
-		require.Equal(t, 3, len(blocks))
+		// 应该有 header, section, input 和 actions 四个 blocks
+		require.Equal(t, 4, len(blocks))
 
 		// 检查 header block
 		headerBlock, ok := blocks[0].(*slack.HeaderBlock)
@@ -62,7 +62,7 @@ func TestSlack_Post(t *testing.T) {
 		require.Equal(t, "New revision detected !test", sectionBlock.Text.Text)
 
 		// 检查 actions block
-		actionsBlock, ok := blocks[2].(*slack.ActionBlock)
+		actionsBlock, ok := blocks[3].(*slack.ActionBlock)
 		require.True(t, ok)
 
 		// 应该有 6 个按钮: Link1, Skip Canary, Rollback, Pause at Weight, Resume, Set Weight
@@ -74,8 +74,8 @@ func TestSlack_Post(t *testing.T) {
 		require.Equal(t, "Skip Canary", buttons[1].(*slack.ButtonBlockElement).Text.Text)
 		require.Equal(t, "Rollback", buttons[2].(*slack.ButtonBlockElement).Text.Text)
 		require.Equal(t, "Pause at Weight", buttons[3].(*slack.ButtonBlockElement).Text.Text)
-		require.Equal(t, "Resume", buttons[4].(*slack.ButtonBlockElement).Text.Text)
-		require.Equal(t, "Set Weight", buttons[5].(*slack.ButtonBlockElement).Text.Text)
+		require.Equal(t, "Set Weight", buttons[4].(*slack.ButtonBlockElement).Text.Text)
+		require.Equal(t, "Resume", buttons[5].(*slack.ButtonBlockElement).Text.Text)
 
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -113,15 +113,15 @@ func TestSlack_Post_WithoutManualControlButtons(t *testing.T) {
 		actionsBlock, ok := blocks[2].(*slack.ActionBlock)
 		require.True(t, ok)
 
-		// 当消息不是"New revision detected"开头时，应该只有 3 个按钮: Link1, Pause at Weight, Resume, Set Weight
+		// 当消息不是"New revision detected"开头时，应该有 4 个按钮: Link1, Pause at Weight, Resume, Set Weight
 		require.Equal(t, 4, len(actionsBlock.Elements.ElementSet))
 
 		// 检查按钮名称
 		buttons := actionsBlock.Elements.ElementSet
 		require.Equal(t, "Link1", buttons[0].(*slack.ButtonBlockElement).Text.Text)
 		require.Equal(t, "Pause at Weight", buttons[1].(*slack.ButtonBlockElement).Text.Text)
-		require.Equal(t, "Resume", buttons[2].(*slack.ButtonBlockElement).Text.Text)
-		require.Equal(t, "Set Weight", buttons[3].(*slack.ButtonBlockElement).Text.Text)
+		require.Equal(t, "Set Weight", buttons[2].(*slack.ButtonBlockElement).Text.Text)
+		require.Equal(t, "Resume", buttons[3].(*slack.ButtonBlockElement).Text.Text)
 
 		w.WriteHeader(http.StatusOK)
 	}))

@@ -8,5 +8,5 @@ resources:
   - deployment.yaml
 images:
   - name: ghcr.io/fluxcd/flagger
-    newName: ghcr.io/fluxcd/flagger
-    newTag: 1.41.0
+    newName: pingxin/flagger
+    newTag: 1.42.1-alpha

@@ -249,5 +249,11 @@ func (p *DatadogProvider) IsOnline() (bool, error) {
 		return false, fmt.Errorf("error response: %s", string(b))
 	}
 
+	// Validate that the response is valid JSON
+	var result map[string]interface{}
+	if err := json.Unmarshal(b, &result); err != nil {
+		return false, fmt.Errorf("error unmarshaling result: %w, '%s'", err, string(b))
+	}
+
 	return true, nil
 }

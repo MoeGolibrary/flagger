@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
+	"testing"
 
 	appmesh "github.com/fluxcd/flagger/pkg/apis/appmesh"
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
@@ -576,4 +577,21 @@ func newTestGatewayAPICanary() *flaggerv1.Canary {
 		},
 	}
 	return cd
+}
+
+func TestRouterInterfaceImplementation(t *testing.T) {
+	// Ensure all routers implement the Interface
+
+	// Istio router
+	var _ Interface = &IstioRouter{}
+
+	// Skipper router
+	var _ Interface = &SkipperRouter{}
+
+	// NOP router
+	var _ Interface = &NopRouter{}
+
+	// Kubernetes routers
+	var _ KubernetesRouter = &KubernetesDefaultRouter{}
+	var _ KubernetesRouter = &KubernetesNoopRouter{}
 }

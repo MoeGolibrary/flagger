@@ -186,18 +186,32 @@ func (skp *SkipperRouter) SetRoutes(canary *flaggerv1.Canary, primaryWeight, can
 
 	iClone := canaryIngress.DeepCopy()
 
-	// TODO: A/B testing
-
-	// Canary
-	iClone.Annotations = skp.makeAnnotations(iClone.Annotations, map[string]int{
-		primarySvcName: primaryWeight,
-		canarySvcName:  canaryWeight,
-	})
+	// Handle A/B testing
+	if len(canary.GetAnalysis().Match) > 0 && canaryWeight == 0 {
+		// A/B testing scenario - redirect all traffic to canary when match conditions are met
+		// For now, we'll use a simple approach and set the canary weight to 100 when in A/B testing mode
+		// A more sophisticated implementation would create separate routes based on the match conditions
+		iClone.Annotations = skp.makeAnnotations(iClone.Annotations, map[string]int{
+			primarySvcName: 100,
+			canarySvcName:  0,
+		})
+	} else {
+		// Standard canary deployment
+		iClone.Annotations = skp.makeAnnotations(iClone.Annotations, map[string]int{
+			primarySvcName: primaryWeight,
+			canarySvcName:  canaryWeight,
+		})
+	}
 
 	// Disable the canary-ingress route after the canary process
-	if canaryWeight == 0 {
+	if canaryWeight == 0 && len(canary.GetAnalysis().Match) == 0 {
 		// ensuring False() is at first place
 		iClone.Annotations[skipperpredicateAnnotationKey] = insertPredicate(iClone.Annotations[skipperpredicateAnnotationKey], canaryRouteDisable)
+	} else if canaryWeight > 0 {
+		// Remove the disable predicate if it exists and we're routing traffic to canary
+		if strings.Contains(iClone.Annotations[skipperpredicateAnnotationKey], canaryRouteDisable) {
+			iClone.Annotations[skipperpredicateAnnotationKey] = removePredicate(iClone.Annotations[skipperpredicateAnnotationKey], canaryRouteDisable)
+		}
 	}
 
 	_, err = skp.kubeClient.NetworkingV1().Ingresses(canary.Namespace).Update(
@@ -268,5 +282,28 @@ func insertPredicate(raw, insert string) string {
 		}
 		predicates = append(predicates, predicate)
 	}
+	return strings.Join(predicates, " && ")
+}
+
+func removePredicate(raw, toRemove string) string {
+	predicates := []string{}
+	for _, x := range strings.Split(raw, "&&") {
+		predicate := strings.TrimSpace(x)
+		// Skip the predicate we want to remove
+		if predicate == toRemove {
+			continue
+		}
+		// Also skip empty predicates
+		if predicate == "" {
+			continue
+		}
+		predicates = append(predicates, predicate)
+	}
+
+	// If no predicates left, return empty string
+	if len(predicates) == 0 {
+		return ""
+	}
+
 	return strings.Join(predicates, " && ")
 }

@@ -10,7 +10,7 @@ COPY go.mod go.mod
 COPY go.sum go.sum
 
 # cache modules
-# RUN go env -w GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
+RUN go env -w GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
 RUN go mod download
 
 # copy source code

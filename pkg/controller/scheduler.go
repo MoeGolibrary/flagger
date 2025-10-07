@@ -690,8 +690,32 @@ func (c *Controller) runCanary(canary *flaggerv1.Canary, canaryController canary
 	meshRouter router.Interface, mirrored bool, canaryWeight int, primaryWeight int, maxWeight int) {
 	primaryName := fmt.Sprintf("%s-primary", canary.Spec.TargetRef.Name)
 
+	// For stepWeights with overflow, we should promote when canaryWeight reaches totalWeight
+	shouldPromote := canaryWeight >= maxWeight
+	c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+		Infof("runCanary: initial shouldPromote=%t, canaryWeight=%d, maxWeight=%d", shouldPromote, canaryWeight, maxWeight)
+	// Special case for stepWeights with overflow
+	if len(canary.GetAnalysis().StepWeights) > 0 {
+		lastStepWeight := canary.GetAnalysis().StepWeights[len(canary.GetAnalysis().StepWeights)-1]
+		totalWeight := c.totalWeight(canary)
+		// If the last step is beyond totalWeight, promote when we reach totalWeight
+		if lastStepWeight > totalWeight && canaryWeight >= totalWeight {
+			shouldPromote = true
+		}
+		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			Infof("runCanary: stepWeights check lastStepWeight=%d, totalWeight=%d, shouldPromote=%t", lastStepWeight, totalWeight, shouldPromote)
+	}
+
+	// Additional check: if we've reached maximum possible weight, we should promote
+	totalWeight := c.totalWeight(canary)
+	if canaryWeight >= totalWeight {
+		shouldPromote = true
+		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			Infof("runCanary: totalWeight check canaryWeight=%d, totalWeight=%d, shouldPromote=%t", canaryWeight, totalWeight, shouldPromote)
+	}
+
 	// increase traffic weight
-	if canaryWeight < maxWeight {
+	if !shouldPromote {
 		// If in "mirror" mode, do one step of mirroring before shifting traffic to canary.
 		// When mirroring, all requests go to primary and canary, but only responses from
 		// primary go back to the user.
@@ -737,9 +761,16 @@ func (c *Controller) runCanary(canary *flaggerv1.Canary, canaryController canary
 	}
 
 	// promote canary - max weight reached
-	if canaryWeight >= maxWeight {
+	if shouldPromote {
+		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			Infof("runCanary: promoting canary, shouldPromote=%t, canaryWeight=%d, maxWeight=%d", shouldPromote, canaryWeight, maxWeight)
 		// check promotion gate
-		if promote := c.runConfirmPromotionHooks(canary, canaryController); !promote {
+		promote := c.runConfirmPromotionHooks(canary, canaryController)
+		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			Infof("runCanary: promotion gate result: %t", promote)
+		if !promote {
+			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+				Infof("runCanary: promotion gate not passed")
 			return
 		}
 

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+# Test for confirm-promotion webhook
+
+set -o errexit
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+source "$(dirname "$0")/base.sh"
+
+echo '>>> Test: Confirm Promotion via webhook'
+
+initialize_test_workloads
+
+CANARY_SPEC=$(cat <<EOF
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo
+  namespace: test
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  progressDeadlineSeconds: 60
+  service:
+    port: 9898
+    portDiscovery: true
+  analysis:
+    interval: 10s
+    threshold: 5
+    iterations: 2
+    metrics:
+    - name: request-success-rate
+      thresholdRange:
+        min: 99
+      interval: 1m
+    webhooks:
+      - name: confirm-promotion
+        type: confirm-promotion
+        url: http://flagger-loadtester.test/gate/check
+      - name: load-test
+        url: http://flagger-loadtester.test/
+        metadata:
+          cmd: "hey -z 2m -q 10 -c 2 http://podinfo.test:9898/"
+EOF
+)
+
+create_canary "$CANARY_SPEC"
+wait_for_initialized
+trigger_deployment "ghcr.io/stefanprodan/podinfo:6.0.2"
+
+wait_for_phase "Progressing"
+
+echo '>>> Waiting for canary to reach waiting for promotion phase'
+wait_for_phase "WaitingPromotion"
+
+echo '>>> Approving promotion via webhook'
+kubectl -n test exec deployment/flagger-loadtester -- curl -d '{"name": "podinfo","namespace":"test"}' http://localhost:8080/gate/approve
+
+wait_for_completion
+
+echo '✔ Confirm Promotion via webhook test passed'

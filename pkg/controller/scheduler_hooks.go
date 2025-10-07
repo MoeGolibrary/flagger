@@ -69,6 +69,21 @@ func (c *Controller) runConfirmRolloutHooks(canary *flaggerv1.Canary, canaryCont
 }
 
 func (c *Controller) runConfirmPromotionHooks(canary *flaggerv1.Canary, canaryController canary.Controller) bool {
+	// If there are no confirm-promotion webhooks, allow promotion
+	hasConfirmPromotionHooks := false
+	for _, webhook := range canary.GetAnalysis().Webhooks {
+		if webhook.Type == flaggerv1.ConfirmPromotionHook {
+			hasConfirmPromotionHooks = true
+			break
+		}
+	}
+
+	// If no confirm-promotion hooks are defined, allow promotion
+	if !hasConfirmPromotionHooks {
+		return true
+	}
+
+	// Otherwise, check the webhooks
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.ConfirmPromotionHook {
 			err := CallWebhook(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
