@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 
 # Test for manual traffic control webhook
-# Note: This test is a placeholder as the manual traffic control webhook functionality is not yet implemented in the loadtester
+# Note: This was previously a placeholder, but now there is a proper implementation
 
 set -o errexit
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 source "$(dirname "$0")/base.sh"
 
-echo '>>> Test: Manual Traffic Control via webhook (Placeholder)'
+echo '>>> Test: Manual Traffic Control via webhook'
 
-echo '>>> This test is a placeholder because the manual traffic control webhook functionality is not yet implemented in the loadtester'
-echo '>>> To implement this test, the loadtester would need to support the following endpoint:'
-echo '>>>   - /traffic/ (accepting POST requests with JSON payload)'
-echo '>>> '
-echo '>>> The webhook would be configured as follows:'
+echo '>>> This test was previously a placeholder. Please run test-manual-traffic-control-proper.sh for the actual implementation.'
+echo '>>> The manual traffic control webhook functionality is now implemented in the loadtester.'
+echo '>>>'
+echo '>>> The webhook is configured as follows:'
 echo '>>>'
 echo '>>> webhooks:'
 echo '>>>   - name: manual-traffic-control'
@@ -29,5 +28,7 @@ echo '>>>   curl -d '\'{"paused": false}\'' http://localhost:8080/traffic/'
 echo '>>>'
 echo '>>> To set a specific weight, a request would be sent to:'
 echo '>>>   curl -d '\'{"weight": 30}\'' http://localhost:8080/traffic/'
+echo '>>>'
+echo '>>> Please run test-manual-traffic-control-proper.sh for the complete test.'
 
-echo '✔ Manual Traffic Control via webhook test documented'
+echo '✔ Manual Traffic Control via webhook placeholder documented'

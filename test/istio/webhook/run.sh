@@ -39,4 +39,7 @@ echo ">>> Showing placeholder for skip webhook test"
 echo ">>> Showing placeholder for manual traffic control webhook test"
 "$DIR"/test-manual-traffic-control.sh
 
+echo ">>> Running manual traffic control webhook test"
+"$DIR"/test-manual-traffic-control-proper.sh
+
 echo ">>> All Istio Webhook E2E tests completed"

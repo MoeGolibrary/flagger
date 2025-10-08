@@ -616,6 +616,25 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 		return true, nil
 	}
 
+	// For existing commands, still check if weight needs to be applied
+	// This handles cases where setting routes failed previously
+	if manualState.Weight != nil {
+		weight := *manualState.Weight
+		if weight >= 0 && weight <= 100 && canary.Status.CanaryWeight != weight {
+			if err := meshRouter.SetRoutes(canary, 100-weight, weight, false); err != nil {
+				return false, fmt.Errorf("failed to set manual traffic weight: %w", err)
+			}
+			c.recorder.SetWeight(canary, 100-weight, weight)
+			canary.Status.CanaryWeight = weight
+			c.recordEventInfof(canary, "Manual weight set to %d%%", weight)
+
+			// Update the status
+			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
+				return false, fmt.Errorf("failed to sync status for manual control: %w", err)
+			}
+		}
+	}
+
 	// if command is not new, check if we should remain paused
 	if canary.Status.ManualState.Paused {
 		return true, nil
