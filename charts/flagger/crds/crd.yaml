@@ -1323,6 +1323,7 @@ spec:
                               - rollback
                               - skip
                               - confirm-traffic-increase
+                              - manual-traffic-control
                           muteAlert:
                             description: Mute all alerts for the webhook
                             type: boolean
