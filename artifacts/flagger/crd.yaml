@@ -19,7 +19,7 @@ spec:
       served: true
       storage: true
       subresources:
-        status: {}
+        status: { }
       additionalPrinterColumns:
         - name: Status
           type: string
@@ -95,7 +95,7 @@ spec:
                 targetRef:
                   description: Target selector
                   type: object
-                  required: ["apiVersion", "kind", "name"]
+                  required: [ "apiVersion", "kind", "name" ]
                   properties:
                     apiVersion:
                       type: string
@@ -110,7 +110,7 @@ spec:
                 autoscalerRef:
                   description: Scaler selector
                   type: object
-                  required: ["apiVersion", "kind", "name"]
+                  required: [ "apiVersion", "kind", "name" ]
                   properties:
                     apiVersion:
                       type: string
@@ -135,7 +135,7 @@ spec:
                 ingressRef:
                   description: Ingress selector
                   type: object
-                  required: ["apiVersion", "kind", "name"]
+                  required: [ "apiVersion", "kind", "name" ]
                   properties:
                     apiVersion:
                       type: string
@@ -176,7 +176,7 @@ spec:
                 service:
                   description: Kubernetes Service spec
                   type: object
-                  required: ["port"]
+                  required: [ "port" ]
                   properties:
                     name:
                       description: Kubernetes service name
@@ -195,6 +195,9 @@ spec:
                       x-kubernetes-int-or-string: true
                     portDiscovery:
                       description: Enable port dicovery
+                      type: boolean
+                    headless:
+                      description: Headless if set to true, generates headless Kubernetes services.
                       type: boolean
                     timeout:
                       description: HTTP or gRPC request timeout
@@ -930,9 +933,9 @@ spec:
                   description: Canary analysis for this canary
                   type: object
                   oneOf:
-                    - required: ["interval", "threshold", "iterations"]
-                    - required: ["interval", "threshold", "stepWeight"]
-                    - required: ["interval", "threshold", "stepWeights"]
+                    - required: [ "interval", "threshold", "iterations" ]
+                    - required: [ "interval", "threshold", "stepWeight" ]
+                    - required: [ "interval", "threshold", "stepWeights" ]
                   properties:
                     interval:
                       description: Schedule interval for this canary
@@ -1015,10 +1018,10 @@ spec:
                             type: object
                             additionalProperties:
                               oneOf:
-                                - required: ["exact"]
-                                - required: ["prefix"]
-                                - required: ["suffix"]
-                                - required: ["regex"]
+                                - required: [ "exact" ]
+                                - required: [ "prefix" ]
+                                - required: [ "suffix" ]
+                                - required: [ "regex" ]
                               type: object
                               properties:
                                 exact:
@@ -1213,7 +1216,7 @@ spec:
                       type: array
                       items:
                         type: object
-                        required: ["name"]
+                        required: [ "name" ]
                         properties:
                           name:
                             description: Name of the metric
@@ -1255,7 +1258,7 @@ spec:
                           templateRef:
                             description: Metric template reference
                             type: object
-                            required: ["name"]
+                            required: [ "name" ]
                             properties:
                               name:
                                 description: Name of this metric template
@@ -1291,7 +1294,7 @@ spec:
                           providerRef:
                             description: Alert provider reference
                             type: object
-                            required: ["name"]
+                            required: [ "name" ]
                             properties:
                               name:
                                 description: Name of the alert provider
@@ -1304,7 +1307,7 @@ spec:
                       type: array
                       items:
                         type: object
-                        required: ["name", "url"]
+                        required: [ "name", "url" ]
                         properties:
                           name:
                             description: Name of the webhook
@@ -1338,6 +1341,9 @@ spec:
                           retries:
                             description: Number of retries for this webhook
                             type: number
+                          disableTLS:
+                            description: Disable TLS verification for this webhook
+                            type: boolean
                           metadata:
                             description: Metadata (key-value pairs) for this webhook
                             type: object
@@ -1349,6 +1355,9 @@ spec:
                       required: [ "cookieName" ]
                       properties:
                         cookieName:
+                          description: CookieName is the key that will be used for the session affinity cookie.
+                          type: string
+                        primaryCookieName:
                           description: CookieName is the key that will be used for the session affinity cookie.
                           type: string
                         maxAge:
@@ -1474,7 +1483,7 @@ spec:
       served: true
       storage: true
       subresources:
-        status: {}
+        status: { }
       additionalPrinterColumns:
         - name: Provider
           type: string
@@ -1525,6 +1534,13 @@ spec:
                     address:
                       description: API address of this provider
                       type: string
+                    headers:
+                      description: Headers to add to HTTP(S) requests
+                      type: object
+                      additionalProperties:
+                        type: array
+                        items:
+                          type: string
                     secretRef:
                       description: Kubernetes secret reference containing the provider credentials
                       type: object
@@ -1565,7 +1581,7 @@ spec:
       served: true
       storage: true
       subresources:
-        status: {}
+        status: { }
       additionalPrinterColumns:
         - name: Type
           type: string

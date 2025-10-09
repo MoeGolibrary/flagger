@@ -348,6 +348,138 @@ func TestIstioRouter_SetRoutes(t *testing.T) {
 		}
 	})
 
+	t.Run("session affinity without primary cookie", func(t *testing.T) {
+		canary := mocks.canary.DeepCopy()
+		cookieKey := "flagger-cookie"
+		// enable session affinity without primary cookie (backward compatibility)
+		canary.Spec.Analysis.SessionAffinity = &v1beta1.SessionAffinity{
+			CookieName: cookieKey,
+			MaxAge:     300,
+		}
+		err := router.SetRoutes(canary, 100, 0, false)
+		require.NoError(t, err)
+
+		vs, err := mocks.meshClient.NetworkingV1beta1().VirtualServices("default").Get(context.TODO(), "podinfo", metav1.GetOptions{})
+		require.NoError(t, err)
+
+		assert.Len(t, vs.Spec.Http, 2)
+		//stickyRoute := vs.Spec.Http[0]
+		weightedRoute := vs.Spec.Http[1]
+
+		// During promotion (100% primary), there should be no sticky route active
+		// weightedRoute should do regular weight based routing
+		for _, routeDest := range weightedRoute.Route {
+			if routeDest.Destination.Host == pHost {
+				assert.Equal(t, 100, routeDest.Weight)
+				// When PrimaryCookieName is not specified, no primary cookie should be set
+				if routeDest.Headers != nil && routeDest.Headers.Response != nil && routeDest.Headers.Response.Add != nil {
+					_, ok := routeDest.Headers.Response.Add[setCookieHeader]
+					// No cookie should be set for primary when PrimaryCookieName is not specified
+					assert.False(t, ok)
+				}
+			}
+			if routeDest.Destination.Host == cHost {
+				assert.Equal(t, 0, routeDest.Weight)
+			}
+		}
+	})
+
+	t.Run("session affinity with primary cookie", func(t *testing.T) {
+		canary := mocks.canary.DeepCopy()
+		cookieKey := "flagger-cookie"
+		primaryCookieKey := "flagger-primary-cookie"
+		// enable session affinity with primary cookie and start canary run
+		canary.Spec.Analysis.SessionAffinity = &v1beta1.SessionAffinity{
+			CookieName:        cookieKey,
+			PrimaryCookieName: primaryCookieKey,
+			MaxAge:            300,
+		}
+		err := router.SetRoutes(canary, 0, 10, false)
+		require.NoError(t, err)
+
+		vs, err := mocks.meshClient.NetworkingV1beta1().VirtualServices("default").Get(context.TODO(), "podinfo", metav1.GetOptions{})
+		require.NoError(t, err)
+
+		assert.Len(t, vs.Spec.Http, 2)
+		stickyRoute := vs.Spec.Http[0]
+		weightedRoute := vs.Spec.Http[1]
+
+		// stickyRoute should match against a cookie and direct all traffic to the canary when a canary run is active.
+		var found bool
+		for _, match := range stickyRoute.Match {
+			if val, ok := match.Headers[cookieHeader]; ok {
+				found = true
+				assert.True(t, strings.Contains(val.Regex, cookieKey))
+				for _, routeDest := range stickyRoute.Route {
+					if routeDest.Destination.Host == pHost {
+						assert.Equal(t, 0, routeDest.Weight)
+					}
+					if routeDest.Destination.Host == cHost {
+						assert.Equal(t, 100, routeDest.Weight)
+					}
+				}
+			}
+		}
+		assert.True(t, found)
+
+		// weightedRoute should do regular weight based routing and inject the Set-Cookie header
+		// for all responses returned from the canary deployment.
+		// It should also set a primary cookie for primary traffic
+		for _, routeDest := range weightedRoute.Route {
+			if routeDest.Destination.Host == pHost {
+				assert.Equal(t, 0, routeDest.Weight)
+				// Check if primary cookie is set for primary traffic
+				if routeDest.Headers != nil && routeDest.Headers.Response != nil && routeDest.Headers.Response.Add != nil {
+					val, ok := routeDest.Headers.Response.Add[setCookieHeader]
+					if ok {
+						assert.True(t, strings.HasPrefix(val, primaryCookieKey))
+						assert.True(t, strings.Contains(val, "Max-Age=300"))
+					}
+				}
+			}
+			if routeDest.Destination.Host == cHost {
+				assert.Equal(t, 10, routeDest.Weight)
+				val, ok := routeDest.Headers.Response.Add[setCookieHeader]
+				assert.True(t, ok)
+				assert.True(t, strings.HasPrefix(val, cookieKey))
+				assert.True(t, strings.Contains(val, "Max-Age=300"))
+			}
+		}
+		assert.True(t, strings.HasPrefix(canary.Status.SessionAffinityCookie, cookieKey))
+
+		// promotion
+		err = router.SetRoutes(canary, 100, 0, false)
+		require.NoError(t, err)
+
+		vs, err = mocks.meshClient.NetworkingV1beta1().VirtualServices("default").Get(context.TODO(), "podinfo", metav1.GetOptions{})
+		require.NoError(t, err)
+
+		assert.Len(t, vs.Spec.Http, 2)
+		stickyRoute = vs.Spec.Http[0]
+		weightedRoute = vs.Spec.Http[1]
+
+		// After promotion, check that primary cookie is set for primary traffic
+		for _, routeDest := range weightedRoute.Route {
+			if routeDest.Destination.Host == pHost {
+				assert.Equal(t, 100, routeDest.Weight)
+				// Check if primary cookie is set for primary traffic
+				if routeDest.Headers != nil && routeDest.Headers.Response != nil && routeDest.Headers.Response.Add != nil {
+					val, ok := routeDest.Headers.Response.Add[setCookieHeader]
+					assert.True(t, ok)
+					assert.True(t, strings.HasPrefix(val, primaryCookieKey))
+					assert.True(t, strings.Contains(val, "Max-Age=300"))
+				}
+			}
+			if routeDest.Destination.Host == cHost {
+				assert.Equal(t, 0, routeDest.Weight)
+				if routeDest.Headers != nil && routeDest.Headers.Response != nil {
+					_, ok := routeDest.Headers.Response.Add[setCookieHeader]
+					assert.False(t, ok)
+				}
+			}
+		}
+	})
+
 	t.Run("mirror", func(t *testing.T) {
 		for _, w := range []int{0, 10, 50} {
 			p, c := 100, 0

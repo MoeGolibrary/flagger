@@ -347,6 +347,9 @@ func (c *Controller) verifyCanary(canary *flaggerv1.Canary) error {
 			return err
 		}
 	}
+	if err := verifySessionAffinity(canary); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -366,6 +369,16 @@ func verifyNoCrossNamespaceRefs(canary *flaggerv1.Canary) error {
 			}
 		}
 	}
+	return nil
+}
+
+func verifySessionAffinity(canary *flaggerv1.Canary) error {
+	if canary.Spec.Analysis.SessionAffinity != nil {
+		if canary.Spec.Analysis.SessionAffinity.CookieName == canary.Spec.Analysis.SessionAffinity.PrimaryCookieName {
+			return fmt.Errorf("can't use the same cookie name for both primary and cookie name; please update them to be different")
+		}
+	}
+
 	return nil
 }
 

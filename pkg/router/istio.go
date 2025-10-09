@@ -775,9 +775,19 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 	// and match the value of the `Set-Cookie` header will be routed to the canary deployment.
 	stickyRoute := weightedRoute
 	stickyRoute.Name = stickyRouteName
+
+	// Determine cookie names
+	cookieName := canary.Spec.Analysis.SessionAffinity.CookieName
+	primaryCookieName := canary.Spec.Analysis.SessionAffinity.PrimaryCookieName
+
+	// Use default cookie name for primary if not specified
+	if primaryCookieName == "" {
+		primaryCookieName = cookieName
+	}
+
 	if canaryWeight != 0 {
 		if canary.Status.SessionAffinityCookie == "" {
-			canary.Status.SessionAffinityCookie = fmt.Sprintf("%s=%s", canary.Spec.Analysis.SessionAffinity.CookieName, randSeq())
+			canary.Status.SessionAffinityCookie = fmt.Sprintf("%s=%s", cookieName, randSeq())
 		}
 
 		for i, routeDest := range weightedRoute.Route {
@@ -850,6 +860,34 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 				stickyRoute.Headers.Response.Add = map[string]string{}
 			}
 			stickyRoute.Headers.Response.Add[setCookieHeader] = fmt.Sprintf("%s; %s=%d", previousCookie, maxAgeAttr, -1)
+		}
+
+		// Set primary cookie if specified
+		if primaryCookieName != cookieName {
+			// Set a separate cookie for primary traffic
+			for i, routeDest := range weightedRoute.Route {
+				if routeDest.Destination.Host == primaryName {
+					if routeDest.Headers == nil {
+						routeDest.Headers = &istiov1beta1.Headers{
+							Response: &istiov1beta1.HeaderOperations{
+								Add: make(map[string]string),
+							},
+						}
+					} else if routeDest.Headers.Response == nil {
+						routeDest.Headers.Response = &istiov1beta1.HeaderOperations{
+							Add: make(map[string]string),
+						}
+					} else if routeDest.Headers.Response.Add == nil {
+						routeDest.Headers.Response.Add = make(map[string]string)
+					}
+					// Set a cookie to identify primary traffic
+					primaryCookieValue := randSeq()
+					routeDest.Headers.Response.Add[setCookieHeader] = fmt.Sprintf("%s=%s; %s=%d", primaryCookieName, primaryCookieValue, maxAgeAttr,
+						canary.Spec.Analysis.SessionAffinity.GetMaxAge(),
+					)
+				}
+				weightedRoute.Route[i] = routeDest
+			}
 		}
 
 		canary.Status.SessionAffinityCookie = ""
