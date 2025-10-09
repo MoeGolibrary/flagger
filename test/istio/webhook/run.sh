@@ -1,45 +1,33 @@
 #!/usr/bin/env bash
 
-# Run all webhook E2E tests
+# Script to run all webhook tests
 
 set -o errexit
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo ">>> Starting Istio Webhook E2E tests"
+echo "Running webhook tests"
 
-echo ">>> Running confirm-rollout webhook test"
-"$DIR"/test-confirm-rollout.sh
+# Run webhook tests
+tests=(
+  "test-confirm-promotion.sh"
+  "test-confirm-promotion-failure.sh"
+  "test-confirm-rollout.sh"
+  "test-confirm-rollout-failure.sh"
+  "test-invalid-webhook.sh"
+  "test-manual-traffic-control.sh"
+  "test-manual-traffic-control-proper.sh"
+  "test-manual-traffic-control-resume.sh"
+  "test-manual-traffic-control-multi-resume.sh"
+  "test-pre-rollout.sh"
+  "test-rollback.sh"
+  "test-rollback-failure.sh"
+  "test-skip.sh"
+)
 
-echo ">>> Running confirm-promotion webhook test"
-"$DIR"/test-confirm-promotion.sh
+for test in "${tests[@]}"; do
+  echo "Running $test"
+  "$REPO_ROOT/test/istio/webhook/$test"
+done
 
-echo ">>> Running rollback webhook test"
-"$DIR"/test-rollback.sh
-
-echo ">>> Running confirm-rollout failure test (webhook timeout)"
-"$DIR"/test-confirm-rollout-failure.sh
-
-echo ">>> Running confirm-promotion failure test (webhook timeout)"
-"$DIR"/test-confirm-promotion-failure.sh
-
-echo ">>> Running invalid webhook test"
-"$DIR"/test-invalid-webhook.sh
-
-echo ">>> Running rollback webhook failure test"
-"$DIR"/test-rollback-failure.sh
-
-echo ">>> Running pre-rollout webhook test"
-"$DIR"/test-pre-rollout.sh
-
-echo ">>> Showing placeholder for skip webhook test"
-"$DIR"/test-skip.sh
-
-echo ">>> Showing placeholder for manual traffic control webhook test"
-"$DIR"/test-manual-traffic-control.sh
-
-echo ">>> Running manual traffic control webhook test"
-"$DIR"/test-manual-traffic-control-proper.sh
-
-echo ">>> All Istio Webhook E2E tests completed"
+echo "All webhook tests passed"

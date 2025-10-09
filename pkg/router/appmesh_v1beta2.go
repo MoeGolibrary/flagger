@@ -121,7 +121,7 @@ func (ar *AppMeshv1beta2Router) reconcileVirtualNode(canary *flaggerv1.Canary, n
 	}
 
 	//get annotation to enable the access log
-	val, _ := canary.ObjectMeta.GetAnnotations()[appmesh.AccessLogAnnotation]
+	val := canary.ObjectMeta.GetAnnotations()[appmesh.AccessLogAnnotation]
 	if val == appmesh.EnabledValue {
 		vnSpec.Logging = &appmeshv1.Logging{
 			AccessLog: &appmeshv1.AccessLog{

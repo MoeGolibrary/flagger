@@ -83,23 +83,23 @@ func NewConcordTask(metadata map[string]string, canary string, logger *zap.Sugar
 	if _, found := metadata["project"]; !found {
 		return nil, errors.New("`project` is required with type concord")
 	}
-	if _, found := metadata["repo"]; found == false {
+	if _, found := metadata["repo"]; !found {
 		return nil, errors.New("`repo` is required with type concord")
 	}
-	if _, found := metadata["entrypoint"]; found == false {
+	if _, found := metadata["entrypoint"]; !found {
 		return nil, errors.New("`entrypoint` is required with type concord")
 	}
-	if _, found := metadata["apiKeyPath"]; found == false {
+	if _, found := metadata["apiKeyPath"]; !found {
 		return nil, errors.New("`apiKeyPath` is required with type concord")
 	}
 	_, err = os.Stat(metadata["apiKeyPath"])
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("`apiKeyPath` file doesn't exist %s", metadata["apiKeyPath"])
 	}
-	if _, found := metadata["endpoint"]; found == false {
+	if _, found := metadata["endpoint"]; !found {
 		return nil, errors.New("`endpoint` is required with type concord")
 	}
-	if _, found := metadata["pollInterval"]; found == false {
+	if _, found := metadata["pollInterval"]; !found {
 		pollIntervalInt = defaultPollInterval
 	} else {
 		pollIntervalInt, err = strconv.Atoi(metadata["pollInterval"])
@@ -107,7 +107,7 @@ func NewConcordTask(metadata map[string]string, canary string, logger *zap.Sugar
 			return nil, errors.New("unable to convert `pollInterval` to int")
 		}
 	}
-	if _, found := metadata["pollTimeout"]; found == false {
+	if _, found := metadata["pollTimeout"]; !found {
 		pollTimeoutInt = defaultPollTimeout
 	} else {
 		pollTimeoutInt, err = strconv.Atoi(metadata["pollTimeout"])

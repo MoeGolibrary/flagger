@@ -13,13 +13,13 @@ Flagger supports various webhook types that can be used to extend the canary ana
 1. **confirm-rollout** - Pauses the rollout until approved
 2. **confirm-promotion** - Pauses the promotion until approved
 3. **rollback** - Triggers rollback when called
+4. **manual-traffic-control** - Allows manual control of traffic routing
 
 ### Placeholder Webhooks
 
 The following webhook types are defined in the Flagger API but not yet implemented in the loadtester:
 
 1. **skip** - Would skip the analysis phase
-2. **manual-traffic-control** - Would allow manual control of traffic routing
 
 ## Test Organization
 
@@ -31,7 +31,10 @@ Each webhook type has its own test script:
 - `test-confirm-rollout-failure.sh` - Tests confirm-rollout webhook timeout behavior
 - `test-invalid-webhook.sh` - Tests behavior with invalid webhook configurations
 - `test-skip.sh` - Placeholder for skip webhook test
-- `test-manual-traffic-control.sh` - Placeholder for manual traffic control webhook test
+- `test-manual-traffic-control.sh` - Tests basic manual traffic control webhook
+- `test-manual-traffic-control-proper.sh` - Tests manual traffic control with proper weight setting
+- `test-manual-traffic-control-resume.sh` - Tests manual traffic control resume with weight maintenance
+- `test-manual-traffic-control-multi-resume.sh` - Tests manual traffic control with multiple resume operations
 
 ## Running the Tests
 
@@ -97,6 +100,27 @@ webhooks:
 To trigger a rollback:
 ```bash
 curl -d '{"name": "podinfo","namespace":"test"}' http://localhost:8080/rollback/open
+```
+
+### Manual Traffic Control Webhook
+
+This webhook allows manual control of traffic routing during canary analysis:
+
+```yaml
+webhooks:
+  - name: manual-traffic-control
+    type: manual-traffic-control
+    url: http://flagger-loadtester.test/traffic/
+```
+
+To set traffic weight and pause:
+```bash
+curl -d '{"weight": 40, "paused": true}' http://podinfo-canary:9898/traffic/
+```
+
+To resume traffic shifting:
+```bash
+curl -d '{"paused": false}' http://podinfo-canary:9898/traffic/
 ```
 
 ## Failure Scenarios

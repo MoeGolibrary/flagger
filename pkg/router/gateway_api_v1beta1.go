@@ -631,9 +631,7 @@ func (gwr *GatewayAPIV1Beta1Router) makeFilters(canary *flaggerv1.Canary) []v1be
 				})
 			}
 
-			for _, name := range canary.Spec.Service.Headers.Request.Remove {
-				requestHeaderFilter.RequestHeaderModifier.Remove = append(requestHeaderFilter.RequestHeaderModifier.Remove, name)
-			}
+			requestHeaderFilter.RequestHeaderModifier.Remove = append(requestHeaderFilter.RequestHeaderModifier.Remove, canary.Spec.Service.Headers.Request.Remove...)
 
 			filters = append(filters, requestHeaderFilter)
 		}
@@ -656,9 +654,7 @@ func (gwr *GatewayAPIV1Beta1Router) makeFilters(canary *flaggerv1.Canary) []v1be
 				})
 			}
 
-			for _, name := range canary.Spec.Service.Headers.Response.Remove {
-				responseHeaderFilter.ResponseHeaderModifier.Remove = append(responseHeaderFilter.ResponseHeaderModifier.Remove, name)
-			}
+			responseHeaderFilter.ResponseHeaderModifier.Remove = append(responseHeaderFilter.ResponseHeaderModifier.Remove, canary.Spec.Service.Headers.Response.Remove...)
 
 			filters = append(filters, responseHeaderFilter)
 		}

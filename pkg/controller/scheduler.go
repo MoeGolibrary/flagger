@@ -342,7 +342,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// check if canary revision changed during analysis
 	if restart := c.hasCanaryRevisionChanged(cd, canaryController); restart {
-		c.logCanaryEvent(cd, fmt.Sprintf("Canary revision changed during analysis, restarting analysis"), zapcore.InfoLevel)
+		c.logCanaryEvent(cd, "Canary revision changed during analysis, restarting analysis", zapcore.InfoLevel)
 		// route all traffic back to primary
 		primaryWeight = c.totalWeight(cd)
 		canaryWeight = 0
@@ -604,16 +604,22 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 
 		// update status to reflect the new manual state has been applied
 		canary.Status.LastAppliedManualTimestamp = manualState.Timestamp
+		canary.Status.ManualState = manualState // Make sure we update the entire manual state
 		if manualState.Paused {
 			canary.Status.Phase = flaggerv1.CanaryPhaseWaiting
+		} else {
+			// If not paused, make sure we're not in waiting phase
+			if canary.Status.Phase == flaggerv1.CanaryPhaseWaiting {
+				canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+			}
 		}
 
 		if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
 			return false, fmt.Errorf("failed to sync status for manual control: %w", err)
 		}
 
-		// pause progression
-		return true, nil
+		// pause progression if needed
+		return manualState.Paused, nil
 	}
 
 	// For existing commands, still check if weight needs to be applied
@@ -633,11 +639,45 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 				return false, fmt.Errorf("failed to sync status for manual control: %w", err)
 			}
 		}
+	} else {
+		// Even if weight is not specified, we still need to update the status when paused changes
+		// Update the manual state with the new paused value
+		if canary.Status.ManualState.Paused != manualState.Paused {
+			c.logger.Infof("Updating manual state paused from %v to %v", canary.Status.ManualState.Paused, manualState.Paused)
+			canary.Status.ManualState.Paused = manualState.Paused
+			// If we're resuming from a paused state, update the phase
+			if !manualState.Paused && canary.Status.Phase == flaggerv1.CanaryPhaseWaiting {
+				c.logger.Infof("Resuming from waiting phase")
+				canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+			}
+			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
+				return false, fmt.Errorf("failed to sync status for manual control: %w", err)
+			}
+		}
 	}
 
 	// if command is not new, check if we should remain paused
 	if canary.Status.ManualState.Paused {
 		return true, nil
+	} else {
+		// When resuming from a paused state, we should continue with the current weight
+		// rather than resetting to 0 and starting over
+		if canary.Status.Phase == flaggerv1.CanaryPhaseWaiting {
+			// Apply the current weight to ensure routing is correct when resuming
+			weight := canary.Status.CanaryWeight
+			if err := meshRouter.SetRoutes(canary, 100-weight, weight, false); err != nil {
+				return false, fmt.Errorf("failed to set traffic weight when resuming: %w", err)
+			}
+			c.recorder.SetWeight(canary, 100-weight, weight)
+			c.recordEventInfof(canary, "Resuming from manual pause with weight %d%%", weight)
+			
+			// Update the status to indicate we're no longer waiting
+			canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+			canary.Status.ManualState.Paused = false
+			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
+				return false, fmt.Errorf("failed to sync status when resuming: %w", err)
+			}
+		}
 	}
 
 	return false, nil
@@ -739,8 +779,7 @@ func (c *Controller) runCanary(canary *flaggerv1.Canary, canaryController canary
 		// When mirroring, all requests go to primary and canary, but only responses from
 		// primary go back to the user.
 
-		var nextStepWeight int
-		nextStepWeight = c.nextStepWeight(canary, canaryWeight)
+		var nextStepWeight int = c.nextStepWeight(canary, canaryWeight)
 		if canary.GetAnalysis().Mirror && canaryWeight == 0 {
 			if !mirrored {
 				mirrored = true
@@ -1069,7 +1108,7 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 	var err error
 	canary, err = c.flaggerClient.FlaggerV1beta1().Canaries(canary.Namespace).Get(context.TODO(), canary.Name, metav1.GetOptions{})
 	if err != nil {
-		c.logCanaryEvent(canary, fmt.Sprintf("Failed get canary"), zapcore.ErrorLevel)
+		c.logCanaryEvent(canary, "Failed get canary", zapcore.ErrorLevel)
 		return false
 	}
 
@@ -1095,13 +1134,13 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 			return false
 		}
 		if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseProgressing, LastStartTime: metav1.Now()}); err != nil {
-			c.logCanaryEvent(canary, fmt.Sprintf("Failed to update canary status"), zapcore.ErrorLevel)
+			c.logCanaryEvent(canary, "Failed to update canary status", zapcore.ErrorLevel)
 			return false
 		}
 		c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseProgressing)
 		canary, err = c.flaggerClient.FlaggerV1beta1().Canaries(canary.Namespace).Get(context.TODO(), canary.Name, metav1.GetOptions{})
 		if err != nil {
-			c.logCanaryEvent(canary, fmt.Sprintf("Failed get canary"), zapcore.ErrorLevel)
+			c.logCanaryEvent(canary, "Failed get canary", zapcore.ErrorLevel)
 			return false
 		}
 		c.recordEventInfof(canaryPhaseProgressing, "New revision detected! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace)
