@@ -113,15 +113,12 @@ func TestSlack_Post_WithoutManualControlButtons(t *testing.T) {
 		actionsBlock, ok := blocks[2].(*slack.ActionBlock)
 		require.True(t, ok)
 
-		// 当消息不是"New revision detected"开头时，应该有 4 个按钮: Link1, Pause at Weight, Resume, Set Weight
-		require.Equal(t, 4, len(actionsBlock.Elements.ElementSet))
+		// 当消息不是"New revision detected"开头时，应该有 1 个按钮: Link1
+		require.Equal(t, 1, len(actionsBlock.Elements.ElementSet))
 
 		// 检查按钮名称
 		buttons := actionsBlock.Elements.ElementSet
 		require.Equal(t, "Link1", buttons[0].(*slack.ButtonBlockElement).Text.Text)
-		require.Equal(t, "Pause at Weight", buttons[1].(*slack.ButtonBlockElement).Text.Text)
-		require.Equal(t, "Set Weight", buttons[2].(*slack.ButtonBlockElement).Text.Text)
-		require.Equal(t, "Resume", buttons[3].(*slack.ButtonBlockElement).Text.Text)
 
 		w.WriteHeader(http.StatusOK)
 	}))
