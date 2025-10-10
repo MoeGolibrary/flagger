@@ -645,11 +645,6 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 		if canary.Status.ManualState.Paused != manualState.Paused {
 			c.logger.Infof("Updating manual state paused from %v to %v", canary.Status.ManualState.Paused, manualState.Paused)
 			canary.Status.ManualState.Paused = manualState.Paused
-			// If we're resuming from a paused state, update the phase
-			if !manualState.Paused && canary.Status.Phase == flaggerv1.CanaryPhaseWaiting {
-				c.logger.Infof("Resuming from waiting phase")
-				canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-			}
 			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
 				return false, fmt.Errorf("failed to sync status for manual control: %w", err)
 			}

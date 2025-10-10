@@ -276,6 +276,105 @@ func TestHandleManualStatus_FullFlow(t *testing.T) {
 	assert.NotEqual(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
 }
 
+// TestHandleManualStatus_ResumeWithoutWeight tests the specific scenario described in the issue:
+// 1. Canary weight is at 22%
+// 2. Manual control webhook returns { "success": true, "paused": true, "timestamp":"1760025039" }
+// 3. Manual control webhook returns { "success": true, "paused": false, "timestamp":"1760025739" }
+// 4. Canary should continue with weight 22%, not reset to 0
+func TestHandleManualStatus_ResumeWithoutWeight(t *testing.T) {
+	mocks := newDeploymentFixture(nil)
+	mocks.canary.Status.Phase = flaggerv1.CanaryPhaseWaiting
+	mocks.canary.Status.CanaryWeight = 22
+	mocks.canary.Status.LastAppliedManualTimestamp = "1760025039"
+	mocks.canary.Status.ManualState = &flaggerv1.CanaryManualState{
+		Paused:    true,
+		Timestamp: "1760025039",
+	}
+
+	// Mock the router to avoid errors with missing resources
+	mocks.router = &MockRouter{}
+
+	// Simulate the resume command without specifying weight
+	mocks.ctrl.manualStateTestHook = func(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
+		return &flaggerv1.CanaryManualState{
+			Paused:    false,  // Not paused anymore
+			Timestamp: "1760025739", // New timestamp
+		}, nil
+	}
+
+	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+
+	require.NoError(t, err)
+	assert.False(t, isPaused)
+	// Weight should remain at 22, not reset to 0
+	assert.Equal(t, 22, mocks.canary.Status.CanaryWeight)
+	// Timestamp should be updated
+	assert.Equal(t, "1760025739", mocks.canary.Status.LastAppliedManualTimestamp)
+	// Manual state should be updated
+	assert.False(t, mocks.canary.Status.ManualState.Paused)
+	// Phase should no longer be Waiting
+	assert.NotEqual(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
+}
+
+// MockRouterWithTracking implements router.Interface for testing purposes and tracks calls
+type MockRouterWithTracking struct {
+	setRoutesCalled bool
+	lastPrimaryWeight int
+	lastCanaryWeight int
+}
+
+func (m *MockRouterWithTracking) Reconcile(canary *flaggerv1.Canary) error {
+	return nil
+}
+
+func (m *MockRouterWithTracking) SetRoutes(canary *flaggerv1.Canary, primaryWeight int, canaryWeight int, mirrored bool) error {
+	m.setRoutesCalled = true
+	m.lastPrimaryWeight = primaryWeight
+	m.lastCanaryWeight = canaryWeight
+	return nil
+}
+
+func (m *MockRouterWithTracking) GetRoutes(canary *flaggerv1.Canary) (primaryWeight int, canaryWeight int, mirrored bool, err error) {
+	return 100, 0, false, nil
+}
+
+func (m *MockRouterWithTracking) Finalize(canary *flaggerv1.Canary) error {
+	return nil
+}
+
+// TestHandleManualStatus_RouteApplicationOnResume tests that routes are properly applied when resuming from pause
+func TestHandleManualStatus_RouteApplicationOnResume(t *testing.T) {
+	mocks := newDeploymentFixture(nil)
+	mocks.canary.Status.Phase = flaggerv1.CanaryPhaseWaiting
+	mocks.canary.Status.CanaryWeight = 22
+	mocks.canary.Status.LastAppliedManualTimestamp = "1760025039"
+	mocks.canary.Status.ManualState = &flaggerv1.CanaryManualState{
+		Paused:    true,
+		Timestamp: "1760025039",
+	}
+
+	// Use router with tracking to verify routes are applied
+	mockRouter := &MockRouterWithTracking{}
+	mocks.router = mockRouter
+
+	// Simulate the resume command without specifying weight but with same timestamp
+	// This simulates the case where we're checking an existing command
+	mocks.ctrl.manualStateTestHook = func(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
+		return &flaggerv1.CanaryManualState{
+			Paused:    false,
+			Timestamp: "1760025039", // Same timestamp as before
+		}, nil
+	}
+
+	_, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+
+	require.NoError(t, err)
+	// Verify that routes were applied with correct weights
+	assert.True(t, mockRouter.setRoutesCalled)
+	assert.Equal(t, 78, mockRouter.lastPrimaryWeight) // 100 - 22
+	assert.Equal(t, 22, mockRouter.lastCanaryWeight)  // Should be 22, not 0
+}
+
 // Helper function to create an int pointer
 func intp(i int) *int {
 	return &i
