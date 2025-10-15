@@ -639,15 +639,23 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 				return false, fmt.Errorf("failed to sync status for manual control: %w", err)
 			}
 		}
-	} else {
-		// Even if weight is not specified, we still need to update the status when paused changes
-		// Update the manual state with the new paused value
-		if canary.Status.ManualState.Paused != manualState.Paused {
-			c.logger.Infof("Updating manual state paused from %v to %v", canary.Status.ManualState.Paused, manualState.Paused)
-			canary.Status.ManualState.Paused = manualState.Paused
-			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-				return false, fmt.Errorf("failed to sync status for manual control: %w", err)
-			}
+	}
+
+	// Even if weight is not specified or already applied, we still need to update the status when paused changes
+	// Update the manual state with the new paused value
+	if canary.Status.ManualState.Paused != manualState.Paused {
+		c.logger.Infof("Updating manual state paused from %v to %v", canary.Status.ManualState.Paused, manualState.Paused)
+		canary.Status.ManualState.Paused = manualState.Paused
+		if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
+			return false, fmt.Errorf("failed to sync status for manual control: %w", err)
+		}
+	}
+
+	// Also check if we need to update the weight in the manual state
+	if manualState.Weight != nil && (canary.Status.ManualState.Weight == nil || *canary.Status.ManualState.Weight != *manualState.Weight) {
+		canary.Status.ManualState.Weight = manualState.Weight
+		if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
+			return false, fmt.Errorf("failed to sync status for manual control: %w", err)
 		}
 	}
 
@@ -655,11 +663,16 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 	if canary.Status.ManualState.Paused {
 		return true, nil
 	} else {
-		// When resuming from a paused state, we should continue with the current weight
+		// When resuming from a paused state, we should continue with the specified weight
 		// rather than resetting to 0 and starting over
 		if canary.Status.Phase == flaggerv1.CanaryPhaseWaiting {
-			// Apply the current weight to ensure routing is correct when resuming
+			// Apply the correct weight to ensure routing is correct when resuming
 			weight := canary.Status.CanaryWeight
+			// Use manualState.Weight if available, otherwise use current canary weight
+			if manualState.Weight != nil {
+				weight = *manualState.Weight
+			}
+			
 			if err := meshRouter.SetRoutes(canary, 100-weight, weight, false); err != nil {
 				return false, fmt.Errorf("failed to set traffic weight when resuming: %w", err)
 			}
@@ -669,6 +682,10 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 			// Update the status to indicate we're no longer waiting
 			canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
 			canary.Status.ManualState.Paused = false
+			// Update canary weight if it changed
+			if canary.Status.CanaryWeight != weight {
+				canary.Status.CanaryWeight = weight
+			}
 			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
 				return false, fmt.Errorf("failed to sync status when resuming: %w", err)
 			}
