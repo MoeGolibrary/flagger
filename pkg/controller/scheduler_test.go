@@ -190,7 +190,7 @@ func TestHandleManualStatus_ResumeFromPause(t *testing.T) {
 	mocks.router = &MockRouter{}
 	
 	// Test the manual status handling
-	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	isPaused, _, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 	
 	require.NoError(t, err)
 	// When paused is false, should not be paused
@@ -244,7 +244,7 @@ func TestHandleManualStatus_FullFlow(t *testing.T) {
 	// Mock the router to avoid errors with missing resources
 	mocks.router = &MockRouter{}
 	
-	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	isPaused, _, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 	
 	require.NoError(t, err)
 	assert.True(t, isPaused)
@@ -264,7 +264,7 @@ func TestHandleManualStatus_FullFlow(t *testing.T) {
 		}, nil
 	}
 	
-	isPaused, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	isPaused, _, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 	
 	require.NoError(t, err)
 	assert.False(t, isPaused)
@@ -302,7 +302,7 @@ func TestHandleManualStatus_ResumeWithoutWeight(t *testing.T) {
 		}, nil
 	}
 
-	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	isPaused, _, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	require.NoError(t, err)
 	assert.False(t, isPaused)
@@ -366,7 +366,7 @@ func TestHandleManualStatus_RouteApplicationOnResume(t *testing.T) {
 		}, nil
 	}
 
-	_, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	_, _, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	require.NoError(t, err)
 	// Verify that routes were applied with correct weights
