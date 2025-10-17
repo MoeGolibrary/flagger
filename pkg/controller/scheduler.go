@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"github.com/fluxcd/flagger/pkg/metrics/providers"
 	"go.uber.org/zap/zapcore"
 	"strings"
@@ -581,7 +582,16 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 	canary.Status.ManualState = manualState
 
 	// compare timestamps to see if this is a new command
-	if canary.Status.ManualState.Timestamp > canary.Status.LastAppliedManualTimestamp {
+	// Parse timestamps as integers to ensure proper numerical comparison
+	manualTimestamp := canary.Status.ManualState.Timestamp
+	lastAppliedTimestamp := canary.Status.LastAppliedManualTimestamp
+	
+	// If we can parse both as integers (unix timestamps), do numerical comparison, otherwise do string comparison
+	manualTs, manualErr := strconv.Atoi(manualTimestamp)
+	lastAppliedTs, lastAppliedErr := strconv.Atoi(lastAppliedTimestamp)
+	
+	if (manualErr == nil && lastAppliedErr == nil && manualTs > lastAppliedTs) || 
+	   (manualErr != nil || lastAppliedErr != nil) && manualTimestamp > lastAppliedTimestamp {
 		c.recordEventInfof(canary, "New manual control command received at %s", manualState.Timestamp)
 
 		// apply new weight if specified
