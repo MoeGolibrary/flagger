@@ -582,6 +582,7 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 	canary.Status.ManualState = manualState
 
 	// compare timestamps to see if this is a new command
+	// Also check if the manual state content has changed (for cases where same timestamp but different content)
 	// Parse timestamps as integers to ensure proper numerical comparison
 	manualTimestamp := canary.Status.ManualState.Timestamp
 	lastAppliedTimestamp := canary.Status.LastAppliedManualTimestamp
@@ -590,10 +591,25 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 	manualTs, manualErr := strconv.Atoi(manualTimestamp)
 	lastAppliedTs, lastAppliedErr := strconv.Atoi(lastAppliedTimestamp)
 	
+	// Determine if this is a new command based on timestamp or content changes
+	isNewCommand := false
 	if (manualErr == nil && lastAppliedErr == nil && manualTs > lastAppliedTs) || 
 	   (manualErr != nil || lastAppliedErr != nil) && manualTimestamp > lastAppliedTimestamp {
+		isNewCommand = true
 		c.recordEventInfof(canary, "New manual control command received at %s", manualState.Timestamp)
-
+	} else if manualTimestamp == lastAppliedTimestamp {
+		// If timestamp is same, check if content has changed (weight or paused state)
+		// This handles case where same timestamp is sent but with different weight/paused values
+		existingManualState := canary.Status.ManualState
+		if (manualState.Weight != nil && 
+			(existingManualState.Weight == nil || *existingManualState.Weight != *manualState.Weight)) ||
+			existingManualState.Paused != manualState.Paused {
+			isNewCommand = true
+			c.recordEventInfof(canary, "Manual control command with same timestamp but changed content received at %s", manualState.Timestamp)
+		}
+	}
+	
+	if isNewCommand {
 		// apply new weight if specified
 		if manualState.Weight != nil {
 			weight := *manualState.Weight
@@ -633,20 +649,25 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 	}
 
 	// For existing commands, still check if weight needs to be applied
-	// This handles cases where setting routes failed previously
+	// This handles cases where setting routes failed previously, or if the weight has changed
+	// Also handle case where manual state values have changed even with same timestamp
 	if manualState.Weight != nil {
 		weight := *manualState.Weight
-		if weight >= 0 && weight <= 100 && canary.Status.CanaryWeight != weight {
-			if err := meshRouter.SetRoutes(canary, 100-weight, weight, false); err != nil {
-				return false, fmt.Errorf("failed to set manual traffic weight: %w", err)
-			}
-			c.recorder.SetWeight(canary, 100-weight, weight)
-			canary.Status.CanaryWeight = weight
-			c.recordEventInfof(canary, "Manual weight set to %d%%", weight)
+		if weight >= 0 && weight <= 100 {
+			// Check if weight has changed from what's currently applied
+			// Use manualState.Weight vs current canary.Status.CanaryWeight
+			if canary.Status.CanaryWeight != weight {
+				if err := meshRouter.SetRoutes(canary, 100-weight, weight, false); err != nil {
+					return false, fmt.Errorf("failed to set manual traffic weight: %w", err)
+				}
+				c.recorder.SetWeight(canary, 100-weight, weight)
+				canary.Status.CanaryWeight = weight
+				c.recordEventInfof(canary, "Manual weight set to %d%%", weight)
 
-			// Update the status
-			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-				return false, fmt.Errorf("failed to sync status for manual control: %w", err)
+				// Update the status to persist the new weight
+				if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
+					return false, fmt.Errorf("failed to sync status for manual control: %w", err)
+				}
 			}
 		}
 	}
