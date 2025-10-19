@@ -37,6 +37,7 @@ import (
 	istiov1alpha3 "github.com/fluxcd/flagger/pkg/apis/istio/v1alpha3"
 	istiov1beta1 "github.com/fluxcd/flagger/pkg/apis/istio/v1beta1"
 	clientset "github.com/fluxcd/flagger/pkg/client/clientset/versioned"
+	"github.com/fluxcd/flagger/pkg/utils"
 )
 
 // IstioRouter is managing Istio virtual services
@@ -631,6 +632,42 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 		newSpec.Http = ir.getSessionAffinityRoute(canary, canaryWeight, primaryName, canaryName, weightedRoute)
 	}
 
+	// IP range routing
+	if canary.Spec.IPRangeRouting != nil && canary.Spec.IPRangeRouting.Enabled {
+		ipRangeMatches, err := ir.generateIPRangeMatches(canary, canaryWeight)
+		if err != nil {
+			ir.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+				Errorf("Failed to generate IP range matches: %v", err)
+		} else if len(ipRangeMatches) > 0 {
+			ipRangeRoute := istiov1beta1.HTTPRoute{
+				Name:       "ip-range-canary",
+				Match:      ipRangeMatches,
+				Rewrite:    canary.Spec.Service.GetIstioRewrite(),
+				Timeout:    canary.Spec.Service.Timeout,
+				Retries:    canary.Spec.Service.Retries,
+				CorsPolicy: canary.Spec.Service.CorsPolicy,
+				Headers:    canary.Spec.Service.Headers,
+				Route: []istiov1beta1.HTTPRouteDestination{
+					makeDestination(canary, primaryName, 0, false),
+					makeDestination(canary, canaryName, 100, true),
+				},
+			}
+
+			newSpec.Http = append([]istiov1beta1.HTTPRoute{ipRangeRoute}, newSpec.Http...)
+		}
+	}
+
+	// Attribute range routing (header/parameter based)
+	if canary.Spec.AttributeRangeRouting != nil && canary.Spec.AttributeRangeRouting.Enabled {
+		attrRangeRoute, err := ir.generateAttributeRangeRoute(canary, canaryWeight)
+		if err != nil {
+			ir.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+				Errorf("Failed to generate attribute range route: %v", err)
+		} else if attrRangeRoute != nil {
+			newSpec.Http = append([]istiov1beta1.HTTPRoute{*attrRangeRoute}, newSpec.Http...)
+		}
+	}
+
 	// fix routing (A/B testing)
 	if len(canary.GetAnalysis().Match) > 0 {
 		// merge the common routes with the canary ones
@@ -727,6 +764,51 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 			newSpec.Http[1].MirrorPercentage = &istiov1beta1.Percent{Value: float64(mw)}
 		}
 	}
+}
+
+// generateAttributeRangeRoute creates an Istio HTTP route for attribute-based routing
+func (ir *IstioRouter) generateAttributeRangeRoute(canary *flaggerv1.Canary, canaryWeight int) (*istiov1beta1.HTTPRoute, error) {
+	if canary.Spec.AttributeRangeRouting == nil || !canary.Spec.AttributeRangeRouting.Enabled {
+		return nil, nil
+	}
+
+	routing := canary.Spec.AttributeRangeRouting
+
+	// Create match condition based on header or parameter
+	var match istiov1beta1.HTTPMatchRequest
+
+	if routing.HeaderName != "" {
+		// Match on header
+		match.Headers = map[string]istiov1alpha1.StringMatch{
+			routing.HeaderName: {},
+		}
+	} else if routing.ParameterName != "" {
+		// Match on query parameter
+		match.QueryParams = map[string]istiov1alpha1.StringMatch{
+			routing.ParameterName: {},
+		}
+	} else {
+		// Neither header nor parameter specified
+		return nil, nil
+	}
+
+	// Create route
+	_, primaryName, canaryName := canary.GetServiceNames()
+	route := &istiov1beta1.HTTPRoute{
+		Name:       "attribute-range-canary",
+		Match:      []istiov1beta1.HTTPMatchRequest{match},
+		Rewrite:    canary.Spec.Service.GetIstioRewrite(),
+		Timeout:    canary.Spec.Service.Timeout,
+		Retries:    canary.Spec.Service.Retries,
+		CorsPolicy: canary.Spec.Service.CorsPolicy,
+		Headers:    canary.Spec.Service.Headers,
+		Route: []istiov1beta1.HTTPRouteDestination{
+			makeDestination(canary, primaryName, 100-canaryWeight, false),
+			makeDestination(canary, canaryName, canaryWeight, true),
+		},
+	}
+
+	return route, nil
 }
 
 // getSessionAffinityRoute returns a route with a sticky session
@@ -1014,4 +1096,39 @@ func randSeq() string {
 		b[i] = letters[r.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+func (ir *IstioRouter) generateIPRangeMatches(canary *flaggerv1.Canary, percentage int) ([]istiov1beta1.HTTPMatchRequest, error) {
+	if canary.Spec.IPRangeRouting == nil || !canary.Spec.IPRangeRouting.Enabled {
+		return nil, nil
+	}
+
+	calc := utils.NewIPRangeCalculator(
+		canary.Spec.IPRangeRouting.Strategy,
+		canary.Spec.IPRangeRouting.HashFunction,
+		canary.Spec.IPRangeRouting.SlotCount,
+	)
+
+	hashRegex, err := calc.GenerateHashRangeRegex(percentage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate hash range regex: %w", err)
+	}
+
+	if hashRegex == "^$" {
+		return nil, nil
+	}
+
+	match := istiov1beta1.HTTPMatchRequest{
+		Headers: map[string]istiov1alpha1.StringMatch{
+			"x-client-ip-hash": {
+				Regex: hashRegex,
+			},
+		},
+	}
+
+	if len(canary.Spec.Service.Match) > 0 {
+		return mergeMatchConditions([]istiov1beta1.HTTPMatchRequest{match}, canary.Spec.Service.Match), nil
+	}
+
+	return []istiov1beta1.HTTPMatchRequest{match}, nil
 }

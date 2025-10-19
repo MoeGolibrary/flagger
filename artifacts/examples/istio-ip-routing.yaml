@@ -1,0 +1,48 @@
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo-ip-routing
+  namespace: test
+spec:
+  provider: istio
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  progressDeadlineSeconds: 60
+  service:
+    port: 80
+    targetPort: 9898
+  ipRangeRouting:
+    enabled: true
+    strategy: consistent-hash
+    initialPercentage: 10
+    stepPercentage: 10
+    maxPercentage: 50
+    hashFunction: fnv
+    slotCount: 1000
+  analysis:
+    interval: 15s
+    threshold: 15
+    maxWeight: 50
+    stepWeight: 10
+    metrics:
+    - name: request-success-rate
+      threshold: 99
+      interval: 1m
+    - name: request-duration
+      threshold: 500
+      interval: 1m
+    webhooks:
+    - name: "gate"
+      type: confirm-rollout
+      url: http://flagger-loadtester.test/gate/approve
+    - name: "confirm-traffic-increase"
+      type: confirm-traffic-increase
+      url: http://flagger-loadtester.test/gate/approve
+    - name: load-test
+      url: http://flagger-loadtester.test/
+      timeout: 5s
+      metadata:
+        type: cmd
+        cmd: "hey -z 2m -q 5 -c 2 http://podinfo.test:9898"

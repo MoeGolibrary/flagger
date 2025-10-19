@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-ip-routing
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo
+  namespace: test-ip-routing
+spec:
+  selector:
+    matchLabels:
+      app: podinfo
+  template:
+    metadata:
+      labels:
+        app: podinfo
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9898"
+    spec:
+      containers:
+      - name: podinfod
+        image: ghcr.io/stefanprodan/podinfo:6.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 9898
+          protocol: TCP
+        env:
+        - name: PODINFO_UI_COLOR
+          value: green
+        command:
+        - ./podinfo
+        - --port=9898
+        - --port-metrics=9797
+        - --grpc-port=9999
+        - --grpc-service-name=podinfo
+        - --level=info
+        - --random-delay=false
+        - --random-error=false
+        livenessProbe:
+          exec:
+            command:
+            - podcli
+            - check
+            - http
+            - localhost:9898/healthz
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - podcli
+            - check
+            - http
+            - localhost:9898/readyz
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podinfo
+  namespace: test-ip-routing
+spec:
+  selector:
+    app: podinfo
+  ports:
+  - name: http
+    port: 9898
+    targetPort: 9898
+    protocol: TCP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: podinfo
+  namespace: test-ip-routing
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 99
+---
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo
+  namespace: test-ip-routing
+spec:
+  provider: istio
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  progressDeadlineSeconds: 60
+  service:
+    port: 9898
+    portDiscovery: true
+    gateways:
+    - istio-system/public-gateway
+    hosts:
+    - app.example.com
+  ipRangeRouting:
+    enabled: true
+    strategy: consistent-hash
+    initialPercentage: 10
+    stepPercentage: 10
+    maxPercentage: 50
+    hashFunction: fnv
+    slotCount: 1000
+  analysis:
+    interval: 15s
+    threshold: 10
+    maxWeight: 50
+    stepWeight: 10
+    metrics:
+    - name: request-success-rate
+      thresholdRange:
+        min: 99
+      interval: 1m
+    - name: request-duration
+      thresholdRange:
+        max: 500
+      interval: 1m
+    webhooks:
+    - name: acceptance-test
+      type: pre-rollout
+      url: http://flagger-loadtester.test/
+      timeout: 30s
+      metadata:
+        type: bash
+        cmd: "curl -sd 'test' http://podinfo-canary.test-ip-routing:9898/token | grep token"
+    - name: load-test
+      url: http://flagger-loadtester.test/
+      timeout: 5s
+      metadata:
+        cmd: "hey -z 2m -q 10 -c 2 http://podinfo.test-ip-routing:9898/"

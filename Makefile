@@ -31,6 +31,10 @@ test-coverage: fmt test-codegen
 	go tool cover -html=cover.out
 	rm cover.out
 
+test-router:
+	@echo "Running router tests"
+	@go test -v ./pkg/router/...
+
 crd:
 	cat artifacts/flagger/crd.yaml > charts/flagger/crds/crd.yaml
 	cat artifacts/flagger/crd.yaml > kustomize/base/flagger/crd.yaml

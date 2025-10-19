@@ -122,6 +122,50 @@ type CanarySpec struct {
 	// pause at this weight until resumed
 	// +optional
 	ManualStep *CanaryManualStep `json:"manualStep,omitempty"`
+
+	// +optional
+	IPRangeRouting *CanaryIPRangeRouting `json:"ipRangeRouting,omitempty"`
+
+	// AttributeRangeRouting defines traffic routing based on request attributes
+	// like headers, parameters, etc. using consistent hashing or range-based strategy
+	// +optional
+	AttributeRangeRouting *CanaryAttributeRangeRouting `json:"attributeRangeRouting,omitempty"`
+}
+
+// CanaryAttributeRangeRouting defines traffic routing based on request attributes
+type CanaryAttributeRangeRouting struct {
+	Enabled bool `json:"enabled,omitempty"`
+
+	// HeaderName defines the header to use for routing decisions
+	// +optional
+	HeaderName string `json:"headerName,omitempty"`
+
+	// ParameterName defines the query parameter to use for routing decisions
+	// +optional
+	ParameterName string `json:"parameterName,omitempty"`
+
+	// Strategy defines the routing strategy (consistent-hash or range-based)
+	Strategy string `json:"strategy,omitempty"`
+
+	// InitialPercentage defines the initial percentage of attribute values to route to canary
+	// +optional
+	InitialPercentage int `json:"initialPercentage,omitempty"`
+
+	// StepPercentage defines the increment percentage for each traffic increase step
+	// +optional
+	StepPercentage int `json:"stepPercentage,omitempty"`
+
+	// MaxPercentage defines the maximum percentage of attribute values to route to canary
+	// +optional
+	MaxPercentage int `json:"maxPercentage,omitempty"`
+
+	// HashFunction defines the hash function for consistent hashing (fnv, md5, sha256)
+	// +optional
+	HashFunction string `json:"hashFunction,omitempty"`
+
+	// SlotCount defines the total number of hash slots for consistent hashing
+	// +optional
+	SlotCount int `json:"slotCount,omitempty"`
 }
 
 // CanaryManualStep defines the manual step configuration for traffic routing
@@ -131,6 +175,30 @@ type CanaryManualStep struct {
 
 	// Resume indicates if the canary should resume automated traffic shifting
 	Resume bool `json:"resume,omitempty"`
+}
+
+type CanaryIPRangeRouting struct {
+	Enabled bool `json:"enabled,omitempty"`
+
+	// +optional
+	Strategy string `json:"strategy,omitempty"`
+
+	// InitialPercentage defines the initial percentage of IP ranges to route to canary
+	// +optional
+	InitialPercentage int `json:"initialPercentage,omitempty"`
+
+	// +optional
+	StepPercentage int `json:"stepPercentage,omitempty"`
+
+	// MaxPercentage defines the maximum percentage of IP ranges to route to canary
+	// +optional
+	MaxPercentage int `json:"maxPercentage,omitempty"`
+
+	// +optional
+	HashFunction string `json:"hashFunction,omitempty"`
+
+	// +optional
+	SlotCount int `json:"slotCount,omitempty"`
 }
 
 // CanaryService defines how ClusterIP services, service mesh or ingress routing objects are generated
