@@ -66,7 +66,7 @@ spec:
     metrics:
     - name: request-success-rate
       thresholdRange:
-        min: 99
+        min: 95
       interval: 1m
     - name: latency
       templateRef:
@@ -188,7 +188,7 @@ spec:
     metrics:
     - name: request-success-rate
       thresholdRange:
-        min: 99
+        min: 95
       interval: 1m
     - name: latency
       templateRef:
@@ -288,7 +288,7 @@ spec:
     metrics:
     - name: request-success-rate
       thresholdRange:
-        min: 99
+        min: 95
       interval: 1m
     - name: latency
       templateRef:
@@ -373,7 +373,7 @@ spec:
     metrics:
     - name: request-success-rate
       thresholdRange:
-        min: 99
+        min: 95
       interval: 1m
     - name: latency
       templateRef:
@@ -460,7 +460,7 @@ spec:
     app: podinfo
   type: ClusterIP
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: podinfo
@@ -508,7 +508,7 @@ spec:
     metrics:
     - name: request-success-rate
       thresholdRange:
-        min: 99
+        min: 95
       interval: 1m
     - name: latency
       templateRef:

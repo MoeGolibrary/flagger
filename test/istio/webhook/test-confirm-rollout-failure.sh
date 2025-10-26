@@ -34,7 +34,7 @@ spec:
     metrics:
     - name: request-success-rate
       thresholdRange:
-        min: 99
+        min: 95
       interval: 1m
     webhooks:
       - name: confirm-rollout

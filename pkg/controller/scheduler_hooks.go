@@ -184,7 +184,7 @@ func (c *Controller) runManualTrafficControlHooks(canary *flaggerv1.Canary) (*fl
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.ManualTrafficControlHook {
 			// found manual traffic control webhook, execute it
-			data, err := callWebhookWithResponse(webhook.URL, canary, webhook.Timeout, webhook.Retries)
+			data, err := CallWebhookWithResponse(*canary, canary.Status.Phase, webhook)
 			if err != nil {
 				c.recordEventWarningf(canary, "Manual traffic control webhook %s failed: %v", webhook.Name, err)
 				return nil, err
@@ -196,6 +196,8 @@ func (c *Controller) runManualTrafficControlHooks(canary *flaggerv1.Canary) (*fl
 				c.recordEventWarningf(canary, "Failed to unmarshal manual traffic control response: %v", err)
 				return nil, err
 			}
+			// TODO rm 输出响应
+			c.recordEventInfof(canary, "Manual traffic control webhook %s response: %v", webhook.Name, manualState)
 
 			return &manualState, nil
 		}

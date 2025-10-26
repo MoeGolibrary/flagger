@@ -24,6 +24,116 @@ func newDeploymentTestCanaryWithManualHook(webhookURL string) *flaggerv1.Canary 
 	return canary
 }
 
+// TestRunManualTrafficControlHooks_WeightOnly tests manual traffic control with only weight specified
+func TestRunManualTrafficControlHooks_WeightOnly(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("{\"weight\": 50, \"timestamp\": \"1234567890\"}"))
+	}))
+	defer ts.Close()
+
+	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
+
+	canary := f.canary.DeepCopy()
+	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	manualState, err := f.ctrl.runManualTrafficControlHooks(canary)
+	require.NoError(t, err)
+
+	assert.NotNil(t, manualState)
+	assert.Equal(t, 50, *manualState.Weight)
+	// Paused should be false by default when not specified
+	assert.False(t, manualState.Paused)
+}
+
+// TestRunManualTrafficControlHooks_PausedOnly tests manual traffic control with only paused specified
+func TestRunManualTrafficControlHooks_PausedOnly(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("{\"paused\": true, \"timestamp\": \"1234567890\"}"))
+	}))
+	defer ts.Close()
+
+	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
+
+	canary := f.canary.DeepCopy()
+	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	manualState, err := f.ctrl.runManualTrafficControlHooks(canary)
+	require.NoError(t, err)
+
+	assert.NotNil(t, manualState)
+	// Weight should be nil when not specified
+	assert.Nil(t, manualState.Weight)
+	assert.True(t, manualState.Paused)
+}
+
+// TestRunManualTrafficControlHooks_EmptyResponse tests manual traffic control with empty response
+func TestRunManualTrafficControlHooks_EmptyResponse(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("{}"))
+	}))
+	defer ts.Close()
+
+	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
+
+	canary := f.canary.DeepCopy()
+	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	manualState, err := f.ctrl.runManualTrafficControlHooks(canary)
+	require.NoError(t, err)
+
+	assert.NotNil(t, manualState)
+	// Both weight and paused should be their zero values when not specified
+	assert.Nil(t, manualState.Weight)
+	assert.False(t, manualState.Paused)
+}
+
+// TestRunManualTrafficControlHooks_NoTimestamp tests manual traffic control without timestamp
+func TestRunManualTrafficControlHooks_NoTimestamp(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("{\"weight\": 30, \"paused\": true}"))
+	}))
+	defer ts.Close()
+
+	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
+
+	canary := f.canary.DeepCopy()
+	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	manualState, err := f.ctrl.runManualTrafficControlHooks(canary)
+	require.NoError(t, err)
+
+	assert.NotNil(t, manualState)
+	assert.Equal(t, 30, *manualState.Weight)
+	assert.True(t, manualState.Paused)
+	assert.Equal(t, "", manualState.Timestamp)
+}
+
+// TestRunManualTrafficControlHooks_WeightAndPause tests manual traffic control with both weight and paused specified
+func TestRunManualTrafficControlHooks_WeightAndPause(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("{\"weight\": 33, \"paused\": false, \"timestamp\": \"1234567890\"}"))
+	}))
+	defer ts.Close()
+
+	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
+
+	canary := f.canary.DeepCopy()
+	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+
+	manualState, err := f.ctrl.runManualTrafficControlHooks(canary)
+	require.NoError(t, err)
+
+	assert.NotNil(t, manualState)
+	assert.Equal(t, 33, *manualState.Weight)
+	assert.False(t, manualState.Paused)
+	assert.Equal(t, "1234567890", manualState.Timestamp)
+}
+
 // TestRunConfirmRolloutHooks tests the confirm-rollout webhook functionality
 func TestRunConfirmRolloutHooks_NoHooks(t *testing.T) {
 	f := newDeploymentFixture(nil)
@@ -396,94 +506,7 @@ func TestRunSkipHooks_Failure(t *testing.T) {
 	assert.False(t, shouldSkip)
 }
 
-// TestRunManualTrafficControlHooks_WeightOnly tests manual traffic control with only weight specified
-func TestRunManualTrafficControlHooks_WeightOnly(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("{\"weight\": 50, \"timestamp\": \"1234567890\"}"))
-	}))
-	defer ts.Close()
-
-	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
-
-	canary := f.canary.DeepCopy()
-	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-
-	manualState, err := f.ctrl.runManualTrafficControlHooks(canary)
-	require.NoError(t, err)
-
-	assert.NotNil(t, manualState)
-	assert.Equal(t, 50, *manualState.Weight)
-	// Paused should be false by default when not specified
-	assert.False(t, manualState.Paused)
-}
-
-// TestRunManualTrafficControlHooks_PausedOnly tests manual traffic control with only paused specified
-func TestRunManualTrafficControlHooks_PausedOnly(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("{\"paused\": true, \"timestamp\": \"1234567890\"}"))
-	}))
-	defer ts.Close()
-
-	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
-
-	canary := f.canary.DeepCopy()
-	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-
-	manualState, err := f.ctrl.runManualTrafficControlHooks(canary)
-	require.NoError(t, err)
-
-	assert.NotNil(t, manualState)
-	// Weight should be nil when not specified
-	assert.Nil(t, manualState.Weight)
-	assert.True(t, manualState.Paused)
-}
-
-// TestRunManualTrafficControlHooks_EmptyResponse tests manual traffic control with empty response
-func TestRunManualTrafficControlHooks_EmptyResponse(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("{}"))
-	}))
-	defer ts.Close()
-
-	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
-
-	canary := f.canary.DeepCopy()
-	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-
-	manualState, err := f.ctrl.runManualTrafficControlHooks(canary)
-	require.NoError(t, err)
-
-	assert.NotNil(t, manualState)
-	// Both weight and paused should be their zero values when not specified
-	assert.Nil(t, manualState.Weight)
-	assert.False(t, manualState.Paused)
-}
-
-// TestRunManualTrafficControlHooks_NoTimestamp tests manual traffic control without timestamp
-func TestRunManualTrafficControlHooks_NoTimestamp(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("{\"weight\": 30, \"paused\": true}"))
-	}))
-	defer ts.Close()
-
-	f := newDeploymentFixture(newDeploymentTestCanaryWithManualHook(ts.URL))
-
-	canary := f.canary.DeepCopy()
-	canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
-
-	manualState, err := f.ctrl.runManualTrafficControlHooks(canary)
-	require.NoError(t, err)
-
-	assert.NotNil(t, manualState)
-	assert.Equal(t, 30, *manualState.Weight)
-	assert.True(t, manualState.Paused)
-	assert.Equal(t, "", manualState.Timestamp)
-}
-
+// TestRunConfirmTrafficIncreaseHooks_NoHooks tests the confirm-traffic-increase webhook functionality
 func TestRunConfirmTrafficIncreaseHooks_NoHooks(t *testing.T) {
 	f := newDeploymentFixture(nil)
 

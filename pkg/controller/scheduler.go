@@ -20,9 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"github.com/fluxcd/flagger/pkg/metrics/providers"
 	"go.uber.org/zap/zapcore"
+	"strconv"
 	"strings"
 	"time"
 
@@ -536,14 +536,27 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	// strategy: Canary progressive traffic increase
 	if c.nextStepWeight(cd, canaryWeight) > 0 {
 		// handle manual canary controls
-		if isPaused, overrideNormalFlow, err := c.handleManualStatus(cd, canaryController, meshRouter); err != nil {
+		if isPaused, err := c.handleManualStatus(cd, canaryController, meshRouter); err != nil {
 			c.recordEventWarningf(cd, "Failed to handle manual status: %v", err)
 			return
 		} else if isPaused {
 			return
-		} else if overrideNormalFlow {
-			// If manual control has set a weight, don't proceed with normal canary progression
-			return
+		}
+
+		// handleManualStatus already processed manual commands and returned pause decision
+		// No need for additional manual weight maintenance logic
+		manualWeightMaintained := false
+		
+		// Check if manual state indicates we should skip auto progression
+		// This happens when a new manual command was just applied
+		shouldSkipAutoProgression := false
+		if cd.Status.ManualState != nil {
+			// Check if this is a new manual command that was just processed
+			if cd.Status.LastAppliedManualTimestamp != "" && 
+				cd.Status.LastAppliedManualTimestamp == cd.Status.ManualState.Timestamp {
+				// A manual command was just applied in this cycle
+				shouldSkipAutoProgression = true
+			}
 		}
 
 		// run hook only if traffic is not mirrored
@@ -555,17 +568,31 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 				return
 			}
 		}
-		c.runCanary(cd, canaryController, meshRouter, mirrored, canaryWeight, primaryWeight, maxWeight)
+		
+		// Skip automatic progression if manual weight is actively maintained (paused state)
+		// or if a new manual command was just applied
+		// or if manual weight is set but not paused (to let the manual weight take effect)
+		if manualWeightMaintained || shouldSkipAutoProgression {
+			if manualWeightMaintained {
+				c.logger.With("canary", fmt.Sprintf("%s.%s", cd.Name, cd.Namespace)).
+					Infof("Skipping automatic canary progression because manual weight was applied")
+			} else {
+				c.logger.With("canary", fmt.Sprintf("%s.%s", cd.Name, cd.Namespace)).
+					Infof("Skipping automatic canary progression due to manual command")
+			}
+		} else {
+			c.runCanary(cd, canaryController, meshRouter, mirrored, canaryWeight, primaryWeight, maxWeight)
+		}
 	}
 
 }
 
 // handleManualStatus checks for manual intervention commands from webhooks and applies them.
 // It returns true if the canary progression should be paused, and true if normal flow should be overridden.
-func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryController canary.Controller, meshRouter router.Interface) (bool, bool, error) {
+func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryController canary.Controller, meshRouter router.Interface) (bool, error) {
 	manualState, err := c.runManualTrafficControlHooks(canary)
 	if err != nil {
-		return false, false, fmt.Errorf("runManualTrafficControlHooks failed: %w", err)
+		return false, fmt.Errorf("runManualTrafficControlHooks failed: %w", err)
 	}
 
 	// if manual state is not configured, resume
@@ -574,11 +601,11 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 			canary.Status.ManualState = nil
 			canary.Status.LastAppliedManualTimestamp = ""
 			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-				return false, false, fmt.Errorf("failed to clear manual state: %w", err)
+				return false, fmt.Errorf("failed to clear manual state: %w", err)
 			}
 			c.recordEventInfof(canary, "Manual control deactivated, resuming automatic progression")
 		}
-		return false, false, nil
+		return false, nil
 	}
 
 	// update status with the desired manual state
@@ -589,41 +616,41 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 	// Parse timestamps as integers to ensure proper numerical comparison
 	manualTimestamp := canary.Status.ManualState.Timestamp
 	lastAppliedTimestamp := canary.Status.LastAppliedManualTimestamp
-	
+
 	// If we can parse both as integers (unix timestamps), do numerical comparison, otherwise do string comparison
 	manualTs, manualErr := strconv.Atoi(manualTimestamp)
 	lastAppliedTs, lastAppliedErr := strconv.Atoi(lastAppliedTimestamp)
-	
+
 	// Determine if this is a new command based on timestamp or content changes
 	isNewCommand := false
-	if (manualErr == nil && lastAppliedErr == nil && manualTs > lastAppliedTs) || 
-	   (manualErr != nil || lastAppliedErr != nil) && manualTimestamp > lastAppliedTimestamp {
+	if (manualErr == nil && lastAppliedErr == nil && manualTs > lastAppliedTs) ||
+		(manualErr != nil || lastAppliedErr != nil) && manualTimestamp > lastAppliedTimestamp {
 		isNewCommand = true
 		c.recordEventInfof(canary, "New manual control command received at %s", manualState.Timestamp)
 	} else if manualTimestamp == lastAppliedTimestamp {
 		// If timestamp is same, check if content has changed (weight or paused state)
 		// This handles case where same timestamp is sent but with different weight/paused values
 		existingManualState := canary.Status.ManualState
-		if (manualState.Weight != nil && 
+		if (manualState.Weight != nil &&
 			(existingManualState.Weight == nil || *existingManualState.Weight != *manualState.Weight)) ||
 			existingManualState.Paused != manualState.Paused {
 			isNewCommand = true
 			c.recordEventInfof(canary, "Manual control command with same timestamp but changed content received at %s", manualState.Timestamp)
 		}
 	}
-	
+
 	if isNewCommand {
 		// apply new weight if specified
 		if manualState.Weight != nil {
 			weight := *manualState.Weight
 			if weight < 0 || weight > 100 {
-				return false, false, fmt.Errorf("invalid manual weight %d, must be between 0 and 100", weight)
+				return false, fmt.Errorf("invalid manual weight %d, must be between 0 and 100", weight)
 			}
 
 			// only set routes if weight is different
 			if canary.Status.CanaryWeight != weight {
 				if err := meshRouter.SetRoutes(canary, 100-weight, weight, false); err != nil {
-					return false, false, fmt.Errorf("failed to set manual traffic weight: %w", err)
+					return false, fmt.Errorf("failed to set manual traffic weight: %w", err)
 				}
 				c.recorder.SetWeight(canary, 100-weight, weight)
 				canary.Status.CanaryWeight = weight
@@ -644,12 +671,18 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 		}
 
 		if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-			return false, false, fmt.Errorf("failed to sync status for manual control: %w", err)
+			return false, fmt.Errorf("failed to sync status for manual control: %w", err)
 		}
 
-		// pause progression if needed, and if weight is set, override normal flow
-		hasManualWeight := manualState.Weight != nil
-		return manualState.Paused, hasManualWeight, nil
+		// When paused=false, we should skip auto progression for just one cycle
+		// to allow the manual weight to take effect, then resume normal progression
+		if !manualState.Paused && manualState.Weight != nil {
+			// Mark that we just applied a manual weight with paused=false
+			// This will cause us to skip one cycle of auto progression
+			return false, nil
+		}
+		
+		return manualState.Paused, nil
 	}
 
 	// For existing commands, still check if weight needs to be applied
@@ -662,7 +695,7 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 			// Use manualState.Weight vs current canary.Status.CanaryWeight
 			if canary.Status.CanaryWeight != weight {
 				if err := meshRouter.SetRoutes(canary, 100-weight, weight, false); err != nil {
-					return false, false, fmt.Errorf("failed to set manual traffic weight: %w", err)
+					return false, fmt.Errorf("failed to set manual traffic weight: %w", err)
 				}
 				c.recorder.SetWeight(canary, 100-weight, weight)
 				canary.Status.CanaryWeight = weight
@@ -670,7 +703,7 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 
 				// Update the status to persist the new weight
 				if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-					return false, false, fmt.Errorf("failed to sync status for manual control: %w", err)
+					return false, fmt.Errorf("failed to sync status for manual control: %w", err)
 				}
 			}
 		}
@@ -682,7 +715,7 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 		c.logger.Infof("Updating manual state paused from %v to %v", canary.Status.ManualState.Paused, manualState.Paused)
 		canary.Status.ManualState.Paused = manualState.Paused
 		if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-			return false, false, fmt.Errorf("failed to sync status for manual control: %w", err)
+			return false, fmt.Errorf("failed to sync status for manual control: %w", err)
 		}
 	}
 
@@ -690,14 +723,13 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 	if manualState.Weight != nil && (canary.Status.ManualState.Weight == nil || *canary.Status.ManualState.Weight != *manualState.Weight) {
 		canary.Status.ManualState.Weight = manualState.Weight
 		if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-			return false, false, fmt.Errorf("failed to sync status for manual control: %w", err)
+			return false, fmt.Errorf("failed to sync status for manual control: %w", err)
 		}
 	}
 
 	// if command is not new, check if we should remain paused
-	hasManualWeight := manualState.Weight != nil
 	if canary.Status.ManualState.Paused {
-		return true, hasManualWeight, nil
+		return true, nil
 	} else {
 		// When resuming from a paused state, we should continue with the specified weight
 		// rather than resetting to 0 and starting over
@@ -708,13 +740,13 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 			if manualState.Weight != nil {
 				weight = *manualState.Weight
 			}
-			
+
 			if err := meshRouter.SetRoutes(canary, 100-weight, weight, false); err != nil {
-				return false, false, fmt.Errorf("failed to set traffic weight when resuming: %w", err)
+				return false, fmt.Errorf("failed to set traffic weight when resuming: %w", err)
 			}
 			c.recorder.SetWeight(canary, 100-weight, weight)
 			c.recordEventInfof(canary, "Resuming from manual pause with weight %d%%", weight)
-			
+
 			// Update the status to indicate we're no longer waiting
 			canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
 			canary.Status.ManualState.Paused = false
@@ -723,13 +755,29 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 				canary.Status.CanaryWeight = weight
 			}
 			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-				return false, false, fmt.Errorf("failed to sync status when resuming: %w", err)
+				return false, fmt.Errorf("failed to sync status when resuming: %w", err)
 			}
 		}
 	}
 
-	return false, hasManualWeight, nil
+	return false, nil
 }
+
+// isManualWeightApplied checks if a manual weight was just applied in the current cycle
+// This is used to prevent automatic progression from overriding manual weight settings
+func (c *Controller) isManualWeightApplied(canary *flaggerv1.Canary) bool {
+	if canary.Status.ManualState != nil && 
+	   canary.Status.ManualState.Weight != nil && 
+	   canary.Status.LastAppliedManualTimestamp != "" &&
+	   canary.Status.LastAppliedManualTimestamp == canary.Status.ManualState.Timestamp {
+		// A manual weight was just applied in this cycle
+		return true
+	}
+	return false
+}
+
+
+
 func (c *Controller) runPromotionTrafficShift(canary *flaggerv1.Canary, canaryController canary.Controller,
 	meshRouter router.Interface, provider string, canaryWeight int, primaryWeight int) {
 	// finalize promotion since no traffic shifting is possible for Kubernetes CNI
@@ -1102,8 +1150,7 @@ func (c *Controller) shouldSkipAnalysis(canary *flaggerv1.Canary, canaryControll
 
 	// notify
 	c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseSucceeded)
-	c.recordEventInfof(canary, "Promotion completed! Canary analysis was skipped for %s.%s",
-		canary.Spec.TargetRef.Name, canary.Namespace)
+	c.recordEventInfof(canary, "Promotion completed! Scaling down %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
 	c.alert(canary, "Canary analysis was skipped, promotion finished.",
 		false, flaggerv1.SeveritySuccess)
 

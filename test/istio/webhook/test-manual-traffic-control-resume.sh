@@ -41,7 +41,7 @@ spec:
     webhooks:
     - name: manual-traffic-control
       type: manual-traffic-control
-      url: http://flagger-loadtester.test/traffic/
+      url: http://flagger-loadtester.test/traffic/state
 EOF
 
 # Wait for canary to be initialized
@@ -55,7 +55,7 @@ wait_for_phase Progressing
 
 # Send command to set weight to 60% and pause
 echo '>>> Sending manual traffic control command to set weight to 60% and pause'
-kubectl -n test exec deployment/flagger-loadtester -- curl -s -d '{"weight": 60, "paused": true}' http://podinfo-canary:9898/traffic/
+kubectl -n test exec deployment/flagger-loadtester -- curl -s -H "Canary-Name: podinfo" -H "Canary-Namespace: test"  -d '{"weight": 60, "paused": true}' http://flagger-loadtester.test/traffic/
 
 # Wait a bit for the command to be processed
 sleep 15
@@ -72,7 +72,7 @@ echo "✓ Canary is paused at 60% weight"
 
 # Send command to resume (without specifying weight)
 echo '>>> Sending manual traffic control command to resume without specifying weight'
-kubectl -n test exec deployment/flagger-loadtester -- curl -s -d '{"paused": false}' http://podinfo-canary:9898/traffic/
+kubectl -n test exec deployment/flagger-loadtester -- curl -s -H "Canary-Name: podinfo" -H "Canary-Namespace: test"  -d '{"paused": false}' http://flagger-loadtester.test/traffic/
 
 # Wait a bit for the command to be processed
 sleep 15
