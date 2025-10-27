@@ -185,10 +185,10 @@ func TestHandleManualStatus_FullFlow(t *testing.T) {
 	// Mock the router to avoid errors with missing resources
 	mocks.router = &MockRouterWithTracking{}
 
-	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	require.NoError(t, err)
-	assert.True(t, isPaused)
+	assert.True(t, shouldSkipRunCanary)
 	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
 	assert.Equal(t, 22, mocks.canary.Status.CanaryWeight)
 	assert.Equal(t, "1760025039", mocks.canary.Status.LastAppliedManualTimestamp)
@@ -205,10 +205,10 @@ func TestHandleManualStatus_FullFlow(t *testing.T) {
 		}, nil
 	}
 
-	isPaused, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	shouldSkipRunCanary, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	require.NoError(t, err)
-	assert.False(t, isPaused)
+	assert.False(t, shouldSkipRunCanary)
 	assert.Equal(t, 22, mocks.canary.Status.CanaryWeight)
 	assert.Equal(t, "1760025739", mocks.canary.Status.LastAppliedManualTimestamp)
 	assert.Equal(t, 22, *mocks.canary.Status.ManualState.Weight)
@@ -236,7 +236,7 @@ func TestHandleManualStatus_ResumeFromPause(t *testing.T) {
 	mocks.ctrl.manualStateTestHook = func(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
 		return &flaggerv1.CanaryManualState{
 			Paused:    false,
-			Timestamp: "1760025039", // Same timestamp
+			Timestamp: "1760025040", // not same timestamp
 		}, nil
 	}
 
@@ -244,15 +244,15 @@ func TestHandleManualStatus_ResumeFromPause(t *testing.T) {
 	mocks.router = &MockRouterWithTracking{}
 
 	// Test the manual status handling
-	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	require.NoError(t, err)
 	// When paused is false, should not be paused
-	assert.False(t, isPaused)
+	assert.False(t, shouldSkipRunCanary)
 	// Weight should remain the same
 	assert.Equal(t, 22, mocks.canary.Status.CanaryWeight)
 	// Timestamp should be updated
-	assert.Equal(t, "1760025039", mocks.canary.Status.LastAppliedManualTimestamp)
+	assert.Equal(t, "1760025040", mocks.canary.Status.LastAppliedManualTimestamp)
 	// After resuming, the phase should no longer be Waiting
 	assert.NotEqual(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
 }
@@ -280,11 +280,11 @@ func TestHandleManualStatus_SetWeightAndContinue(t *testing.T) {
 	}
 
 	// Call handleManualStatus
-	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	// Assertions
 	require.NoError(t, err)
-	assert.False(t, isPaused)                             // Should not be paused
+	assert.True(t, shouldSkipRunCanary)                   // Should skip runCanary
 	assert.Equal(t, 33, mocks.canary.Status.CanaryWeight) // Weight should be updated
 	assert.Equal(t, "1760025039", mocks.canary.Status.LastAppliedManualTimestamp)
 	assert.Equal(t, 33, *mocks.canary.Status.ManualState.Weight)
@@ -318,11 +318,11 @@ func TestHandleManualStatus_SetWeightAndPause(t *testing.T) {
 	}
 
 	// Call handleManualStatus
-	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	// Assertions
 	require.NoError(t, err)
-	assert.True(t, isPaused)                                                 // Should be paused
+	assert.True(t, shouldSkipRunCanary)                                      // Should be paused
 	assert.Equal(t, 33, mocks.canary.Status.CanaryWeight)                    // Weight should be updated
 	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase) // Should be in waiting phase
 	assert.Equal(t, "1760025039", mocks.canary.Status.LastAppliedManualTimestamp)
@@ -356,11 +356,11 @@ func TestHandleManualStatus_PauseWithoutWeight(t *testing.T) {
 	}
 
 	// Call handleManualStatus
-	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	// Assertions
 	require.NoError(t, err)
-	assert.True(t, isPaused)                                                 // Should be paused
+	assert.True(t, shouldSkipRunCanary)                                      // Should be paused
 	assert.Equal(t, 22, mocks.canary.Status.CanaryWeight)                    // Weight should remain the same
 	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase) // Should be in waiting phase
 	assert.Equal(t, "1760025039", mocks.canary.Status.LastAppliedManualTimestamp)
@@ -396,10 +396,10 @@ func TestHandleManualStatus_ResumeWithoutWeight(t *testing.T) {
 		}, nil
 	}
 
-	isPaused, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	require.NoError(t, err)
-	assert.False(t, isPaused)
+	assert.False(t, shouldSkipRunCanary)
 	// Weight should remain at 22, not reset to 0
 	assert.Equal(t, 22, mocks.canary.Status.CanaryWeight)
 	// Timestamp should be updated
@@ -408,6 +408,99 @@ func TestHandleManualStatus_ResumeWithoutWeight(t *testing.T) {
 	assert.False(t, mocks.canary.Status.ManualState.Paused)
 	// Phase should no longer be Waiting
 	assert.NotEqual(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
+}
+
+// TestHandleManualStatus_MultiCycleSameTimestamp tests the multi-cycle behavior with same timestamp:
+// 1. First cycle: Set paused=true with timestamp "1234567890", should return true (paused)
+// 2. Second cycle: Same timestamp "1234567890" with paused=true, should still return true (paused)
+func TestHandleManualStatus_MultiCycleSameTimestamp(t *testing.T) {
+	mocks := newDeploymentFixture(nil)
+	mocks.canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+	mocks.canary.Status.CanaryWeight = 10
+
+	// Mock the router with tracking to verify routes are applied
+	mockRouter := &MockRouterWithTracking{}
+	mocks.router = mockRouter
+
+	// First cycle: Set paused=true with timestamp "1234567890"
+	mocks.ctrl.manualStateTestHook = func(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
+		return &flaggerv1.CanaryManualState{
+			Paused:    true,
+			Timestamp: "1234567890",
+		}, nil
+	}
+
+	// 2 cycle call
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.True(t, shouldSkipRunCanary) // Should be paused
+	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567890", mocks.canary.Status.LastAppliedManualTimestamp)
+
+	// 2 cycle: Same timestamp "1234567890" with paused=true
+	// This simulates the case where the webhook returns the same response in consecutive cycles
+	shouldSkipRunCanary, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.True(t, shouldSkipRunCanary) // Should still be paused
+	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567890", mocks.canary.Status.LastAppliedManualTimestamp)
+
+	// 3 cycle: Same timestamp "1234567890" with paused=true
+	// This simulates the case where the webhook returns the same response in consecutive cycles
+	shouldSkipRunCanary, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.True(t, shouldSkipRunCanary) // Should still be paused
+	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567890", mocks.canary.Status.LastAppliedManualTimestamp)
+}
+
+// TestHandleManualStatus_MultiCycleSameTimestamp tests the multi-cycle behavior with same timestamp:
+// 1. First cycle: Set paused=true with timestamp "1234567890", should return true (paused)
+// 2. Second cycle: Same timestamp "1234567890" with paused=true, should still return true (paused)
+func TestHandleManualStatus_MultiCycleSameTimestampNotPaused(t *testing.T) {
+	mocks := newDeploymentFixture(nil)
+	mocks.canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+	mocks.canary.Status.CanaryWeight = 10
+
+	// Mock the router with tracking to verify routes are applied
+	mockRouter := &MockRouterWithTracking{}
+	mocks.router = mockRouter
+
+	// First cycle: Set paused=true with timestamp "1234567890"
+	manualWeight := int(20)
+	mocks.ctrl.manualStateTestHook = func(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
+		return &flaggerv1.CanaryManualState{
+			Weight:    &manualWeight,
+			Paused:    false,
+			Timestamp: "1234567890",
+		}, nil
+	}
+
+	// 1 cycle call
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.True(t, shouldSkipRunCanary) // Should be paused
+	assert.Equal(t, manualWeight, mocks.canary.Status.CanaryWeight)
+	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567890", mocks.canary.Status.LastAppliedManualTimestamp)
+
+	// 2 cycle: Same timestamp "1234567890" with paused=true
+	// This simulates the case where the webhook returns the same response in consecutive cycles
+	shouldSkipRunCanary, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.False(t, shouldSkipRunCanary) // Should still be paused
+	assert.Equal(t, manualWeight, mocks.canary.Status.CanaryWeight)
+	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567890", mocks.canary.Status.LastAppliedManualTimestamp)
+
+	// 3 cycle: Same timestamp "1234567890" with paused=true
+	// This simulates the case where the webhook returns the same response in consecutive cycles
+	shouldSkipRunCanary, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.False(t, shouldSkipRunCanary) // Should still be paused
+	assert.Equal(t, manualWeight, mocks.canary.Status.CanaryWeight)
+	assert.Equal(t, flaggerv1.CanaryPhaseProgressing, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567890", mocks.canary.Status.LastAppliedManualTimestamp)
 }
 
 // MockRouterWithTracking implements router.Interface for testing purposes and tracks calls
@@ -448,7 +541,11 @@ func TestHandleManualStatus_RouteApplicationOnResume(t *testing.T) {
 	}
 
 	// Use router with tracking to verify routes are applied
-	mockRouter := &MockRouterWithTracking{}
+	mockRouter := &MockRouterWithTracking{
+		lastPrimaryWeight: 78,
+		lastCanaryWeight:  22,
+		setRoutesCalled:   true,
+	}
 	mocks.router = mockRouter
 
 	// Simulate the resume command without specifying weight but with same timestamp
@@ -456,17 +553,79 @@ func TestHandleManualStatus_RouteApplicationOnResume(t *testing.T) {
 	mocks.ctrl.manualStateTestHook = func(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
 		return &flaggerv1.CanaryManualState{
 			Paused:    false,
-			Timestamp: "1760025039", // Same timestamp as before
+			Timestamp: "1760025040", // Same timestamp as before
 		}, nil
 	}
 
-	_, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
 
 	require.NoError(t, err)
+	assert.False(t, shouldSkipRunCanary)
 	// Verify that routes were applied with correct weights
 	assert.True(t, mockRouter.setRoutesCalled)
 	assert.Equal(t, 78, mockRouter.lastPrimaryWeight) // 100 - 22
 	assert.Equal(t, 22, mockRouter.lastCanaryWeight)  // Should be 22, not 0
+}
+
+// TestHandleManualStatus_PauseToResumeTransition tests the transition from paused to resume state:
+// 1. First cycle: Set paused=true with timestamp "1234567890", should return true (paused)
+// 2. Second cycle: Set paused=false with timestamp "1234567891", should return false (not paused)
+func TestHandleManualStatus_PauseToResumeTransition(t *testing.T) {
+	mocks := newDeploymentFixture(nil)
+	mocks.canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+	mocks.canary.Status.CanaryWeight = 15
+
+	// Mock the router with tracking to verify routes are applied
+	mockRouter := &MockRouterWithTracking{}
+	mocks.router = mockRouter
+
+	// First cycle: Set paused=true with timestamp "1234567890"
+	mocks.ctrl.manualStateTestHook = func(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
+		return &flaggerv1.CanaryManualState{
+			Paused:    true,
+			Timestamp: "1234567890",
+		}, nil
+	}
+
+	// 1 cycle call
+	shouldSkipRunCanary, err := mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.True(t, shouldSkipRunCanary) // Should be paused
+	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567890", mocks.canary.Status.LastAppliedManualTimestamp)
+	assert.True(t, mocks.canary.Status.ManualState.Paused)
+
+	// 2 cycle call
+	shouldSkipRunCanary, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.True(t, shouldSkipRunCanary) // Should be paused
+	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567890", mocks.canary.Status.LastAppliedManualTimestamp)
+	assert.True(t, mocks.canary.Status.ManualState.Paused)
+
+	// 3 cycle call
+	shouldSkipRunCanary, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.True(t, shouldSkipRunCanary) // Should be paused
+	assert.Equal(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567890", mocks.canary.Status.LastAppliedManualTimestamp)
+	assert.True(t, mocks.canary.Status.ManualState.Paused)
+
+	// 4 cycle: Set paused=false with timestamp "1234567891" (new timestamp)
+	mocks.ctrl.manualStateTestHook = func(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
+		return &flaggerv1.CanaryManualState{
+			Paused:    false,
+			Timestamp: "1234567891", // New timestamp
+		}, nil
+	}
+
+	// 4 cycle call
+	shouldSkipRunCanary, err = mocks.ctrl.handleManualStatus(mocks.canary, mocks.deployer, mocks.router)
+	require.NoError(t, err)
+	assert.False(t, shouldSkipRunCanary) // Should not be paused anymore
+	assert.NotEqual(t, flaggerv1.CanaryPhaseWaiting, mocks.canary.Status.Phase)
+	assert.Equal(t, "1234567891", mocks.canary.Status.LastAppliedManualTimestamp)
+	assert.False(t, mocks.canary.Status.ManualState.Paused)
 }
 
 // Helper function to create an int pointer

@@ -9,4 +9,4 @@ resources:
 images:
   - name: ghcr.io/fluxcd/flagger
     newName: pingxin/flagger
-    newTag: 1.42.1-alpha
+    newTag: 1.42.2-alpha

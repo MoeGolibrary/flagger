@@ -20,7 +20,7 @@ spec:
       serviceAccountName: flagger
       containers:
       - name: flagger
-        image: ghcr.io/fluxcd/flagger:1.0.0
+        image: pingxin/flagger:1.42.2-alpha
         imagePullPolicy: IfNotPresent
         ports:
         - name: http

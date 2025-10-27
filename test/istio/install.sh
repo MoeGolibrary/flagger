@@ -17,7 +17,7 @@ if kubectl get deployment istiod -n istio-system >/dev/null 2>&1; then
         echo '>>> Installing Flagger'
         kubectl apply -k ${REPO_ROOT}/kustomize/istio
         
-        kubectl -n istio-system set image deployment/flagger flagger=pingxin/flagger:latest
+        kubectl -n istio-system set image deployment/flagger flagger=pingxin/flagger:1.42.2-alpha
         kubectl -n istio-system rollout status deployment/flagger
         exit 0
     else
