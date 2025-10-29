@@ -931,7 +931,7 @@ func (c *Controller) runAnalysis(canary *flaggerv1.Canary) (bool, error) {
 	// run external checks
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == "" || webhook.Type == flaggerv1.RolloutHook {
-			err := CallWebhook(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
+			_, err := CallWebhookWithResponse(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
 			if err != nil {
 				c.recordEventWarningf(canary, "Halt %s.%s advancement external check %s failed %v",
 					canary.Name, canary.Namespace, webhook.Name, err)
@@ -1062,11 +1062,11 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 		canary.Status.Phase == flaggerv1.CanaryPhaseFinalising {
 		return true
 	}
-	
+
 	// If canary is waiting due to manual traffic control, don't advance the status
-	if canary.Status.Phase == flaggerv1.CanaryPhaseWaiting && 
-	   canary.Status.ManualState != nil && 
-	   canary.Status.ManualState.Paused {
+	if canary.Status.Phase == flaggerv1.CanaryPhaseWaiting &&
+		canary.Status.ManualState != nil &&
+		canary.Status.ManualState.Paused {
 		return true
 	}
 

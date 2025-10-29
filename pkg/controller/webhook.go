@@ -31,12 +31,27 @@ import (
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 )
 
+type CanaryWebhookResponse struct {
+	ConfirmTrafficIncrease bool `json:"confirmTrafficIncrease"`
+	ConfirmRollout         bool `json:"confirmRollout"`
+	ConfirmPromotion       bool `json:"confirmPromotion"`
+	PreRollout             bool `json:"preRollout"`
+	PostRollout            bool `json:"postRollout"`
+	Rollback               bool `json:"rollback"`
+	Skip                   bool `json:"skip"`
+	ManualTrafficControl   *struct {
+		Weight          float64 `json:"weight"`
+		Paused          bool    `json:"paused"`
+		ManualTimestamp string  `json:"timestamp"`
+	} `json:"manualTrafficControl,omitempty"`
+}
+
 func callWebhook(webhook string, payload interface{}, timeout string, retries int) error {
 	_, err := callWebhookWithResponse(webhook, payload, timeout, retries)
 	return err
 }
 
-func callWebhookWithResponse(webhook string, payload interface{}, timeout string, retries int) ([]byte, error) {
+func callWebhookWithResponse(webhook string, payload interface{}, timeout string, retries int) (*CanaryWebhookResponse, error) {
 	payloadBin, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
@@ -80,59 +95,17 @@ func callWebhookWithResponse(webhook string, payload interface{}, timeout string
 	}
 
 	if r.StatusCode > 202 {
-		return b, errors.New(string(b))
+		return nil, errors.New(string(b))
 	}
+	var resp CanaryWebhookResponse
+	err = json.Unmarshal(b, &resp)
 
-	return b, nil
-}
-
-// CallWebhook does a HTTP POST to an external service and
-// returns an error if the response status code is non-2xx
-func CallWebhook(r flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flaggerv1.CanaryWebhook) error {
-	t := time.Now()
-
-	payload := flaggerv1.CanaryWebhookPayload{
-		Name:          r.Name,
-		Namespace:     r.Namespace,
-		Phase:         phase,
-		Checksum:      r.CanaryChecksum(),
-		BuildId:       r.Status.LastBuildId,
-		Type:          w.Type,
-		FailedChecks:  r.Status.FailedChecks,
-		CanaryWeight:  r.Status.CanaryWeight,
-		Iterations:    r.Status.Iterations,
-		RemainingTime: r.GetRemainingTime(),
-		Metadata: map[string]string{
-			"timestamp":        strconv.FormatInt(t.UnixNano()/1000000, 10),
-			"phase":            string(r.Status.Phase),
-			"failedChecks":     strconv.Itoa(r.Status.FailedChecks),
-			"canaryWeight":     strconv.Itoa(r.Status.CanaryWeight),
-			"iterations":       strconv.Itoa(r.Status.Iterations),
-			"lastBuildId":      r.Status.LastBuildId,
-			"lastAppliedSpec":  r.Status.LastAppliedSpec,
-			"lastPromotedSpec": r.Status.LastPromotedSpec,
-		},
-	}
-
-	if w.Metadata != nil {
-		for key, value := range *w.Metadata {
-			if _, ok := payload.Metadata[key]; ok {
-				continue
-			}
-			payload.Metadata[key] = value
-		}
-	}
-
-	if len(w.Timeout) < 2 {
-		w.Timeout = "10s"
-	}
-
-	return callWebhook(w.URL, payload, w.Timeout, w.Retries)
+	return &resp, nil
 }
 
 // CallWebhookWithResponse does a HTTP POST to an external service and
 // returns an error if the response status code is non-2xx
-func CallWebhookWithResponse(r flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flaggerv1.CanaryWebhook) ([]byte, error) {
+func CallWebhookWithResponse(r flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flaggerv1.CanaryWebhook) (*CanaryWebhookResponse, error) {
 	t := time.Now()
 
 	payload := flaggerv1.CanaryWebhookPayload{
