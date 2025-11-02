@@ -65,7 +65,10 @@ func TestNewDatadogProvider_MissingKeys(t *testing.T) {
 
 func TestNewDatadogProvider_InvalidInterval(t *testing.T) {
 	// 测试无效时间间隔的错误
-	_, err := NewDatadogProvider("invalid", "", flaggerv1.MetricTemplateProvider{}, make(map[string][]byte), mylog)
+	_, err := NewDatadogProvider("invalid", "", flaggerv1.MetricTemplateProvider{}, map[string][]byte{
+		datadogAPIKeySecretKey:         []byte("api-key"),
+		datadogApplicationKeySecretKey: []byte("app-key"),
+	}, mylog)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "error parsing metric interval")
 }
@@ -73,7 +76,8 @@ func TestNewDatadogProvider_InvalidInterval(t *testing.T) {
 func TestNewDatadogProvider_HistoryWindow(t *testing.T) {
 	// 验证历史窗口配置
 	dp, _ := NewDatadogProvider("1m", "2h", flaggerv1.MetricTemplateProvider{}, map[string][]byte{
-		datadogAPIKeySecretKey: []byte("key"),
+		datadogAPIKeySecretKey:         []byte("api-key"),
+		datadogApplicationKeySecretKey: []byte("app-key"),
 	}, mylog)
 	assert.Equal(t, int64(2*60*60), dp.history)
 }
@@ -121,7 +125,7 @@ func TestDatadogProvider_GetPreviousMetricValue(t *testing.T) {
 	apiKey := "api-key"
 	t.Run("valid time window", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			json := `{"series": [{"pointlist": [[1,1]]}]`
+			json := `{"series": [{"pointlist": [[1,1]]}]}`
 			w.Write([]byte(json))
 		}))
 		defer ts.Close()
@@ -227,7 +231,7 @@ func TestDatadogProvider_RunQuery(t *testing.T) {
 
 	t.Run("no values", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			json := fmt.Sprintf(`{"series": [{"pointlist": []}]}`)
+			json := `{"series": [{"pointlist": []}]}`
 			w.Write([]byte(json))
 		}))
 		defer ts.Close()
@@ -262,6 +266,9 @@ func TestDatadogProvider_IsOnline(t *testing.T) {
 				assert.Equal(t, appKey, r.Header.Get(datadogApplicationKeyHeaderKey))
 				assert.Equal(t, apiKey, r.Header.Get(datadogAPIKeyHeaderKey))
 				w.WriteHeader(c.code)
+				if c.code == http.StatusOK {
+					w.Write([]byte(`{"valid": true}`))
+				}
 			}))
 			defer ts.Close()
 

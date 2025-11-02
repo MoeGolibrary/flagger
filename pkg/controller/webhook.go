@@ -31,15 +31,35 @@ import (
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 )
 
+type CanaryWebhookResponse struct {
+	ConfirmTrafficIncrease bool `json:"confirmTrafficIncrease"`
+	ConfirmRollout         bool `json:"confirmRollout"`
+	ConfirmPromotion       bool `json:"confirmPromotion"`
+	PreRollout             bool `json:"preRollout"`
+	PostRollout            bool `json:"postRollout"`
+	Rollback               bool `json:"rollback"`
+	Skip                   bool `json:"skip"`
+	ManualTrafficControl   *struct {
+		Weight          float64 `json:"weight"`
+		Paused          bool    `json:"paused"`
+		ManualTimestamp string  `json:"timestamp"`
+	} `json:"manualTrafficControl,omitempty"`
+}
+
 func callWebhook(webhook string, payload interface{}, timeout string, retries int) error {
+	_, err := callWebhookWithResponse(webhook, payload, timeout, retries)
+	return err
+}
+
+func callWebhookWithResponse(webhook string, payload interface{}, timeout string, retries int) (*CanaryWebhookResponse, error) {
 	payloadBin, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	hook, err := url.Parse(webhook)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	httpClient := retryablehttp.NewClient()
@@ -48,7 +68,7 @@ func callWebhook(webhook string, payload interface{}, timeout string, retries in
 
 	req, err := retryablehttp.NewRequest("POST", hook.String(), bytes.NewBuffer(payloadBin))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -58,32 +78,34 @@ func callWebhook(webhook string, payload interface{}, timeout string, retries in
 	}
 	t, err := time.ParseDuration(timeout)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	httpClient.HTTPClient.Timeout = t
 
 	r, err := httpClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer r.Body.Close()
 
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
-		return fmt.Errorf("error reading body: %s", err.Error())
+		return nil, fmt.Errorf("error reading body: %s", err.Error())
 	}
 
 	if r.StatusCode > 202 {
-		return errors.New(string(b))
+		return nil, errors.New(string(b))
 	}
+	var resp CanaryWebhookResponse
+	err = json.Unmarshal(b, &resp)
 
-	return nil
+	return &resp, nil
 }
 
-// CallWebhook does a HTTP POST to an external service and
+// CallWebhookWithResponse does a HTTP POST to an external service and
 // returns an error if the response status code is non-2xx
-func CallWebhook(r flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flaggerv1.CanaryWebhook) error {
+func CallWebhookWithResponse(r flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flaggerv1.CanaryWebhook) (*CanaryWebhookResponse, error) {
 	t := time.Now()
 
 	payload := flaggerv1.CanaryWebhookPayload{
@@ -122,7 +144,7 @@ func CallWebhook(r flaggerv1.Canary, phase flaggerv1.CanaryPhase, w flaggerv1.Ca
 		w.Timeout = "10s"
 	}
 
-	return callWebhook(w.URL, payload, w.Timeout, w.Retries)
+	return callWebhookWithResponse(w.URL, payload, w.Timeout, w.Retries)
 }
 
 func CallEventWebhook(r *flaggerv1.Canary, w flaggerv1.CanaryWebhook, message, eventtype string) error {

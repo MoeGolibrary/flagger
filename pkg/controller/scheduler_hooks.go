@@ -18,20 +18,17 @@ package controller
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
 	"go.uber.org/zap/zapcore"
 
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 	"github.com/fluxcd/flagger/pkg/canary"
-	"github.com/fluxcd/flagger/pkg/router"
 )
 
 func (c *Controller) runConfirmTrafficIncreaseHooks(canary *flaggerv1.Canary) bool {
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.ConfirmTrafficIncreaseHook {
-			err := CallWebhook(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
+			data, err := CallWebhookWithResponse(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
 			if err != nil {
 				c.recordEventWarningf(canary, "Halt %s.%s advancement waiting for traffic increase approval %s",
 					canary.Name, canary.Namespace, webhook.Name)
@@ -40,7 +37,9 @@ func (c *Controller) runConfirmTrafficIncreaseHooks(canary *flaggerv1.Canary) bo
 				}
 				return false
 			}
-			c.recordEventInfof(canary, "Confirm-traffic-increase check %s passed", webhook.Name)
+			if data != nil && data.ConfirmTrafficIncrease {
+				c.recordEventInfof(canary, "Confirm-traffic-increase check %s passed", webhook.Name)
+			}
 		}
 	}
 	return true
@@ -49,7 +48,7 @@ func (c *Controller) runConfirmTrafficIncreaseHooks(canary *flaggerv1.Canary) bo
 func (c *Controller) runConfirmRolloutHooks(canary *flaggerv1.Canary, canaryController canary.Controller) bool {
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.ConfirmRolloutHook {
-			err := CallWebhook(*canary, canary.Status.Phase, webhook)
+			data, err := CallWebhookWithResponse(*canary, canary.Status.Phase, webhook)
 			if err != nil {
 				if canary.Status.Phase != flaggerv1.CanaryPhaseWaiting {
 					if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseWaiting); err != nil {
@@ -64,16 +63,33 @@ func (c *Controller) runConfirmRolloutHooks(canary *flaggerv1.Canary, canaryCont
 				}
 				return false
 			}
-			c.recordEventInfof(canary, "Confirm-rollout check %s passed", webhook.Name)
+			if data != nil && data.ConfirmTrafficIncrease {
+				c.recordEventInfof(canary, "Confirm-traffic-increase check %s passed", webhook.Name)
+			}
 		}
 	}
 	return true
 }
 
 func (c *Controller) runConfirmPromotionHooks(canary *flaggerv1.Canary, canaryController canary.Controller) bool {
+	// If there are no confirm-promotion webhooks, allow promotion
+	hasConfirmPromotionHooks := false
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.ConfirmPromotionHook {
-			err := CallWebhook(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
+			hasConfirmPromotionHooks = true
+			break
+		}
+	}
+
+	// If no confirm-promotion hooks are defined, allow promotion
+	if !hasConfirmPromotionHooks {
+		return true
+	}
+
+	// Otherwise, check the webhooks
+	for _, webhook := range canary.GetAnalysis().Webhooks {
+		if webhook.Type == flaggerv1.ConfirmPromotionHook {
+			data, err := CallWebhookWithResponse(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
 			if err != nil {
 				if canary.Status.Phase != flaggerv1.CanaryPhaseWaitingPromotion {
 					if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseWaitingPromotion); err != nil {
@@ -91,7 +107,8 @@ func (c *Controller) runConfirmPromotionHooks(canary *flaggerv1.Canary, canaryCo
 					}
 				}
 				return false
-			} else {
+			}
+			if data != nil && data.ConfirmPromotion {
 				c.recordEventInfof(canary, "Confirm-promotion check %s passed", webhook.Name)
 			}
 		}
@@ -102,12 +119,13 @@ func (c *Controller) runConfirmPromotionHooks(canary *flaggerv1.Canary, canaryCo
 func (c *Controller) runPreRolloutHooks(canary *flaggerv1.Canary) bool {
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.PreRolloutHook {
-			err := CallWebhook(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
+			data, err := CallWebhookWithResponse(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
 			if err != nil {
 				c.recordEventWarningf(canary, "Halt %s.%s advancement pre-rollout check %s failed %v",
 					canary.Name, canary.Namespace, webhook.Name, err)
 				return false
-			} else {
+			}
+			if data != nil && data.ConfirmTrafficIncrease {
 				c.recordEventInfof(canary, "Pre-rollout check %s passed", webhook.Name)
 			}
 		}
@@ -118,11 +136,12 @@ func (c *Controller) runPreRolloutHooks(canary *flaggerv1.Canary) bool {
 func (c *Controller) runPostRolloutHooks(canary *flaggerv1.Canary, phase flaggerv1.CanaryPhase) bool {
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.PostRolloutHook {
-			err := CallWebhook(*canary, phase, webhook)
+			data, err := CallWebhookWithResponse(*canary, phase, webhook)
 			if err != nil {
 				c.recordEventWarningf(canary, "Post-rollout hook %s failed %v", webhook.Name, err)
 				return false
-			} else {
+			}
+			if data != nil && data.ConfirmPromotion {
 				c.recordEventInfof(canary, "Post-rollout check %s passed", webhook.Name)
 			}
 		}
@@ -133,10 +152,11 @@ func (c *Controller) runPostRolloutHooks(canary *flaggerv1.Canary, phase flagger
 func (c *Controller) runRollbackHooks(canary *flaggerv1.Canary, phase flaggerv1.CanaryPhase) bool {
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.RollbackHook {
-			err := CallWebhook(*canary, phase, webhook)
+			data, err := CallWebhookWithResponse(*canary, phase, webhook)
 			if err != nil {
 				c.recordEventInfof(canary, "Rollback hook %s not signaling a rollback", webhook.Name)
-			} else {
+			}
+			if data != nil && data.Rollback {
 				c.recordEventWarningf(canary, "Rollback check %s passed", webhook.Name)
 				return true
 			}
@@ -148,10 +168,11 @@ func (c *Controller) runRollbackHooks(canary *flaggerv1.Canary, phase flaggerv1.
 func (c *Controller) runSkipHooks(canary *flaggerv1.Canary, phase flaggerv1.CanaryPhase) bool {
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.SkipHook {
-			err := CallWebhook(*canary, phase, webhook)
+			data, err := CallWebhookWithResponse(*canary, phase, webhook)
 			if err != nil {
 				c.recordEventInfof(canary, "Skip Canary hook %s not signaling a rollback", webhook.Name)
-			} else {
+			}
+			if data != nil && data.Skip {
 				c.recordEventWarningf(canary, "Skip Canary check %s passed", webhook.Name)
 				return true
 			}
@@ -160,67 +181,35 @@ func (c *Controller) runSkipHooks(canary *flaggerv1.Canary, phase flaggerv1.Cana
 	return false
 }
 
-func (c *Controller) runManualTrafficControlHooks(canary *flaggerv1.Canary, canaryController canary.Controller, meshRouter router.Interface) (shouldContinue bool, manualTrafficRatio int) {
+// runManualTrafficControlHooks checks for manual traffic control settings by calling webhooks.
+// It returns the desired manual state received from the webhook.
+func (c *Controller) runManualTrafficControlHooks(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
+	// internal hook for testing
+	if c.manualStateTestHook != nil {
+		return c.manualStateTestHook(canary)
+	}
+
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.ManualTrafficControlHook {
-			err := CallWebhook(*canary, canary.Status.Phase, webhook)
+			// found manual traffic control webhook, execute it
+			data, err := CallWebhookWithResponse(*canary, canary.Status.Phase, webhook)
 			if err != nil {
-				if trafficRatio, shouldPause := parseTrafficControlResponse(err); shouldPause {
-					if err := c.setManualTrafficControlState(canary, canaryController, trafficRatio); err != nil {
-						c.recordEventWarningf(canary, "Failed to set manual traffic control: %v", err)
-						return false, 0
-					}
-
-					primaryWeight := 100 - trafficRatio
-					if err := meshRouter.SetRoutes(canary, primaryWeight, trafficRatio, false); err != nil {
-						c.recordEventWarningf(canary, "Failed to set traffic routes: %v", err)
-						return false, 0
-					}
-
-					c.recordEventInfof(canary, "Manual traffic control activated: %d%% canary traffic", trafficRatio)
-					return false, trafficRatio
-				}
-			} else {
-				if err := c.clearManualTrafficControlState(canary, canaryController); err != nil {
-					c.recordEventWarningf(canary, "Failed to clear manual traffic control: %v", err)
-				}
-				c.recordEventInfof(canary, "Manual traffic control deactivated, resuming automatic progression")
-				return true, 0
+				c.recordEventWarningf(canary, "Manual traffic control webhook %s failed: %v", webhook.Name, err)
+				return nil, err
 			}
-		}
-	}
-	return true, 0
-}
 
-func parseTrafficControlResponse(err error) (int, bool) {
-	errMsg := err.Error()
-	if strings.HasPrefix(errMsg, "PAUSE:") {
-		if ratio, parseErr := strconv.Atoi(strings.TrimPrefix(errMsg, "PAUSE:")); parseErr == nil {
-			if ratio >= 0 && ratio <= 100 {
-				return ratio, true
+			// unmarshal response
+			var manualState flaggerv1.CanaryManualState
+
+			if data.ManualTrafficControl != nil {
+				w := int(data.ManualTrafficControl.Weight)
+				manualState.Weight = &w
+				manualState.Paused = data.ManualTrafficControl.Paused
+				manualState.Timestamp = data.ManualTrafficControl.ManualTimestamp
 			}
+
+			return &manualState, nil
 		}
 	}
-	return 0, false
-}
-
-func (c *Controller) setManualTrafficControlState(canary *flaggerv1.Canary, canaryController canary.Controller, trafficRatio int) error {
-	if canary.Status.Phase != flaggerv1.CanaryPhaseWaiting {
-		if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseWaiting); err != nil {
-			return err
-		}
-		c.recordEventInfof(canary, "Canary paused for manual traffic control")
-	}
-
-	return canaryController.SetStatusWeight(canary, trafficRatio)
-}
-
-func (c *Controller) clearManualTrafficControlState(canary *flaggerv1.Canary, canaryController canary.Controller) error {
-	if canary.Status.Phase == flaggerv1.CanaryPhaseWaiting {
-		if err := canaryController.SetStatusPhase(canary, flaggerv1.CanaryPhaseProgressing); err != nil {
-			return err
-		}
-		c.recordEventInfof(canary, "Canary resumed from manual traffic control")
-	}
-	return nil
+	return nil, nil
 }

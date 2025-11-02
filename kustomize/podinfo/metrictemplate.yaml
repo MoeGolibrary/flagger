@@ -17,7 +17,7 @@ metadata:
     example: "例如，计算过去一分钟内目标服务的成功请求占比。"
 spec:
   provider:
-    address: http://prometheus.istio-system:9090
+    address: http://flagger-prometheus.istio-system:9090
     type: prometheus
     secretRef:
       name: prom-auth
@@ -49,7 +49,7 @@ metadata:
     example: "例如，计算过去一分钟内目标服务请求延迟的99%百分位。"
 spec:
   provider:
-    address: http://prometheus.istio-system:9090
+    address: http://flagger-prometheus.istio-system:9090
     type: prometheus
     secretRef:
       name: prom-auth
@@ -77,7 +77,7 @@ metadata:
     example: "例如，计算过去一分钟内目标服务的错误请求占比。"
 spec:
   provider:
-    address: http://prometheus.istio-system:9090
+    address: http://flagger-prometheus.istio-system:9090
     type: prometheus
     secretRef:
       name: prom-auth
@@ -112,7 +112,7 @@ metadata:
     example: "例如，计算过去一分钟内目标容器的CPU使用率。"
 spec:
   provider:
-    address: http://prometheus.istio-system:9090
+    address: http://flagger-prometheus.istio-system:9090
     type: prometheus
     secretRef:
       name: prom-auth
@@ -140,7 +140,7 @@ metadata:
     example: "例如，计算过去一分钟内目标容器的内存使用率。"
 spec:
   provider:
-    address: http://prometheus.istio-system:9090
+    address: http://flagger-prometheus.istio-system:9090
     type: prometheus
     secretRef:
       name: prom-auth

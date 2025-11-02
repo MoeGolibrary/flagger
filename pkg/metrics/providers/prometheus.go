@@ -152,9 +152,9 @@ func (p *PrometheusProvider) ExecuteCurrentQuery(query string) (float64, error) 
 			return 0, fmt.Errorf("%w", ErrMultipleValuesReturned)
 		}
 		metricValue := v.Value[1]
-		switch metricValue.(type) {
+		switch metricValue := metricValue.(type) {
 		case string:
-			f, err := strconv.ParseFloat(metricValue.(string), 64)
+			f, err := strconv.ParseFloat(metricValue, 64)
 			if err != nil {
 				return 0, err
 			}

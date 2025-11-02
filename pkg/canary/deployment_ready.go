@@ -108,8 +108,15 @@ func (c *DeploymentController) isDeploymentReady(deployment *appsv1.Deployment, 
 				deployment.Status.UpdatedReplicas, *deployment.Spec.Replicas)
 		}
 
+		// Check if old replicas are still terminating
+		if deployment.Status.Replicas > deployment.Status.UpdatedReplicas {
+			c.logger.Debug("Waiting for rollout to finish: old replicas are terminating", "replicas", deployment.Status.Replicas, "updatedReplicas", deployment.Status.UpdatedReplicas)
+			return retriable, fmt.Errorf("waiting for rollout to finish: %d old replicas are in termination",
+				deployment.Status.Replicas-deployment.Status.UpdatedReplicas)
+		}
+
 		// Check if all replicas are available
-		if deployment.Status.AvailableReplicas < *deployment.Spec.Replicas {
+		if deployment.Spec.Replicas != nil && deployment.Status.AvailableReplicas < *deployment.Spec.Replicas {
 			c.logger.Debug("Waiting for rollout to finish: not all replicas are available", "availableReplicas", deployment.Status.AvailableReplicas, "desiredReplicas", *deployment.Spec.Replicas)
 			return retriable, fmt.Errorf("waiting for rollout to finish: %d out of %d replicas are available",
 				deployment.Status.AvailableReplicas, *deployment.Spec.Replicas)

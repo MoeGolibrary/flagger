@@ -37,7 +37,6 @@ func TestFinalizer_hasFinalizer(t *testing.T) {
 }
 
 func TestFinalizer_addFinalizer(t *testing.T) {
-
 	cs := fakeFlagger.NewSimpleClientset(newDeploymentTestCanary())
 	// prepend so it is evaluated over the catch all *
 	cs.PrependReactor("update", "canaries", func(action k8sTesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -71,11 +70,10 @@ func TestFinalizer_addFinalizer(t *testing.T) {
 }
 
 func TestFinalizer_removeFinalizer(t *testing.T) {
-
 	withFinalizer := newDeploymentTestCanary()
 	withFinalizer.Finalizers = append(withFinalizer.Finalizers, finalizer)
 
-	cs := fakeFlagger.NewSimpleClientset(newDeploymentTestCanary())
+	cs := fakeFlagger.NewSimpleClientset(withFinalizer)
 	// prepend so it is evaluated over the catch all *
 	cs.PrependReactor("update", "canaries", func(action k8sTesting.Action) (handled bool, ret runtime.Object, err error) {
 		return true, nil, fmt.Errorf("failed to add finalizer to canary %s", "testCanary")

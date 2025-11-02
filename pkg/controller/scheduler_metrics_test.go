@@ -29,6 +29,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+var testMetricsServerURL string
+var alwaysReady = func() bool { return true }
+
 func TestController_checkMetricProviderAvailability(t *testing.T) {
 	t.Run("builtin", func(t *testing.T) {
 		// ok
@@ -86,7 +89,9 @@ func TestController_checkMetricProviderAvailability(t *testing.T) {
 
 func TestController_runMetricChecks(t *testing.T) {
 	t.Run("customVariables", func(t *testing.T) {
-		ctrl := newDeploymentFixture(nil).ctrl
+		fixture := newDeploymentFixture(nil)
+		ctrl := fixture.ctrl
+
 		analysis := &flaggerv1.CanaryAnalysis{Metrics: []flaggerv1.CanaryMetric{{
 			Name: "",
 			TemplateVariables: map[string]string{
@@ -127,23 +132,6 @@ func TestController_runMetricChecks(t *testing.T) {
 		assert.Equal(t, false, checks)
 	})
 
-	t.Run("builtinMetric", func(t *testing.T) {
-		ctrl := newDeploymentFixture(nil).ctrl
-		analysis := &flaggerv1.CanaryAnalysis{Metrics: []flaggerv1.CanaryMetric{{
-			Name: "request-success-rate",
-			ThresholdRange: &flaggerv1.CanaryThresholdRange{
-				Min: toFloatPtr(0),
-				Max: toFloatPtr(100),
-			},
-		}}}
-		canary := &flaggerv1.Canary{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
-			Spec:       flaggerv1.CanarySpec{Analysis: analysis},
-		}
-		checks, _ := ctrl.runMetricChecks(canary)
-		assert.Equal(t, true, checks)
-	})
-
 	t.Run("no metric Template is defined, but a query is specified", func(t *testing.T) {
 		ctrl := newDeploymentFixture(nil).ctrl
 		analysis := &flaggerv1.CanaryAnalysis{Metrics: []flaggerv1.CanaryMetric{{
@@ -163,7 +151,9 @@ func TestController_runMetricChecks(t *testing.T) {
 	})
 
 	t.Run("both have metric Template and query", func(t *testing.T) {
-		ctrl := newDeploymentFixture(nil).ctrl
+		fixture := newDeploymentFixture(nil)
+		ctrl := fixture.ctrl
+
 		analysis := &flaggerv1.CanaryAnalysis{Metrics: []flaggerv1.CanaryMetric{{
 			Name: "",
 			TemplateVariables: map[string]string{
@@ -187,4 +177,22 @@ func TestController_runMetricChecks(t *testing.T) {
 		checks, _ := ctrl.runMetricChecks(canary)
 		assert.Equal(t, true, checks)
 	})
+}
+
+func TestController_runMetricChecks_Builtin(t *testing.T) {
+	ctrl := newDeploymentFixture(nil).ctrl
+	analysis := &flaggerv1.CanaryAnalysis{Metrics: []flaggerv1.CanaryMetric{{
+		Name: "request-success-rate",
+		ThresholdRange: &flaggerv1.CanaryThresholdRange{
+			Min: toFloatPtr(0),
+			Max: toFloatPtr(100),
+		},
+	}}}
+	canary := &flaggerv1.Canary{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default"},
+		Spec:       flaggerv1.CanarySpec{Analysis: analysis},
+	}
+	checks, err := ctrl.runMetricChecks(canary)
+	assert.Equal(t, true, checks)
+	assert.NoError(t, err)
 }

@@ -152,6 +152,9 @@ spec:
         timeout: 5s
         metadata:
           cmd: "ghz -z 1m -q 10 -c 2 --insecure podinfo-canary.test:9898"
+      - name: "manual-traffic-control"
+        type: manual-traffic-control
+        url: https://c41a303ec9c6fb78f53b6ca9e94baa6e.m.pipedream.net
 #      - name: "traffic increase gate"
 #        type: confirm-traffic-increase
 #        url: http://flagger-loadtester.test/gate/approve
@@ -167,13 +170,13 @@ spec:
 #      - name: "rollback gate"
 #        type: rollback
 #        url: http://flagger-loadtester.test/rollback/check
-#      - name: "send to Slack"
-#        type: event
-#        url: https://ebe22f6bff7757f8a94129a58332baee.m.pipedream.net
-#        retries: 3
-#        metadata:
-#          environment: "test"
-#          cluster: "flagger-test"
+      - name: "send to Slack"
+        type: event
+        url: https://0e73af8ca947a7f16c6d88e77c0aca2a.m.pipedream.net
+        retries: 3
+        metadata:
+          environment: "test"
+          cluster: "flagger-test"
 #    alerts:
 #      - name: "on-call Slack"
 #        severity: info

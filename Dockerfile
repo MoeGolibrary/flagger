@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine as builder
+FROM golang:1.24-alpine as builder
 
 ARG TARGETPLATFORM
 ARG REVISON
@@ -10,7 +10,7 @@ COPY go.mod go.mod
 COPY go.sum go.sum
 
 # cache modules
-# RUN go env -w GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
+RUN go env -w GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
 RUN go mod download
 
 # copy source code
@@ -22,7 +22,7 @@ RUN CGO_ENABLED=0 go build \
     -ldflags "-s -w -X github.com/fluxcd/flagger/pkg/version.REVISION=${REVISON}" \
     -a -o flagger ./cmd/flagger
 
-FROM alpine:3.20
+FROM alpine:3.21
 
 RUN apk --no-cache add ca-certificates
 

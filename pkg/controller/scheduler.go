@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"github.com/fluxcd/flagger/pkg/metrics/providers"
 	"go.uber.org/zap/zapcore"
+	"strconv"
 	"strings"
 	"time"
 
@@ -183,7 +184,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		msg := "skipping canary run as object is suspended"
 		c.logger.With("canary", fmt.Sprintf("%s.%s", name, namespace)).
 			Debug(msg)
-		c.recordEventInfof(cd, msg)
+		c.recordEventInfof(cd, "%s", msg)
 		return
 	}
 
@@ -342,7 +343,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// check if canary revision changed during analysis
 	if restart := c.hasCanaryRevisionChanged(cd, canaryController); restart {
-		c.logCanaryEvent(cd, fmt.Sprintf("Canary revision changed during analysis, restarting analysis"), zapcore.InfoLevel)
+		c.logCanaryEvent(cd, "Canary revision changed during analysis, restarting analysis", zapcore.InfoLevel)
 		// route all traffic back to primary
 		primaryWeight = c.totalWeight(cd)
 		canaryWeight = 0
@@ -534,48 +535,12 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// strategy: Canary progressive traffic increase
 	if c.nextStepWeight(cd, canaryWeight) > 0 {
-		// Check for manual traffic increase webhook
-		if shouldContinue, manualTrafficWeight := c.runManualTrafficControlHooks(cd, canaryController, meshRouter); !shouldContinue {
-			c.recorder.SetWeight(cd, 100-manualTrafficWeight, manualTrafficWeight)
+		// handle manual canary controls
+		if shouldSkipRunCanary, err := c.handleManualStatus(cd, canaryController, meshRouter); err != nil {
+			c.recordEventWarningf(cd, "Failed to handle manual status: %v", err)
 			return
-		}
-
-		// Check for manual step in spec
-		if cd.Spec.ManualStep != nil {
-			if !cd.Spec.ManualStep.Resume {
-				// Manual step is defined and not resumed
-				if canaryWeight >= cd.Spec.ManualStep.Weight {
-					// We've reached or exceeded the manual step weight, pause
-					c.recordEventInfof(cd, "Canary is paused at %d%% traffic weight. Waiting for manual resume.",
-						cd.Spec.ManualStep.Weight)
-
-					// Set the status to waiting if not already
-					if cd.Status.Phase != flaggerv1.CanaryPhaseWaiting {
-						if err := canaryController.SetStatusPhase(cd, flaggerv1.CanaryPhaseWaiting); err != nil {
-							c.recordEventWarningf(cd, "%v", err)
-						}
-					}
-
-					// Keep traffic at the specified weight
-					if err := meshRouter.SetRoutes(cd, 100-cd.Spec.ManualStep.Weight, cd.Spec.ManualStep.Weight, false); err != nil {
-						c.recordEventWarningf(cd, "%v", err)
-					}
-					c.recorder.SetWeight(cd, 100-cd.Spec.ManualStep.Weight, cd.Spec.ManualStep.Weight)
-					return
-				}
-			} else {
-				// Manual step is resumed, continue with automated traffic shifting
-				// Reset the manual step after processing
-				defer func() {
-					cd.Spec.ManualStep = nil
-					_, err := c.flaggerClient.FlaggerV1beta1().Canaries(cd.Namespace).Update(context.TODO(), cd, metav1.UpdateOptions{})
-					if err != nil {
-						c.recordEventWarningf(cd, "Failed to reset manual step: %v", err)
-					}
-				}()
-
-				c.recordEventInfof(cd, "Resuming automated traffic shifting from %d%% canary weight", canaryWeight)
-			}
+		} else if shouldSkipRunCanary {
+			return
 		}
 
 		// run hook only if traffic is not mirrored
@@ -587,9 +552,93 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 				return
 			}
 		}
+
 		c.runCanary(cd, canaryController, meshRouter, mirrored, canaryWeight, primaryWeight, maxWeight)
 	}
 
+}
+
+// handleManualStatus checks for manual intervention commands from webhooks and applies them.
+// It returns true if the canary progression should be paused, and true if normal flow should be overridden.
+func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryController canary.Controller, meshRouter router.Interface) (bool, error) {
+	manualState, err := c.runManualTrafficControlHooks(canary)
+	if err != nil {
+		return false, fmt.Errorf("runManualTrafficControlHooks failed: %w", err)
+	}
+
+	// if manual state is not configured, resume
+	if manualState == nil || manualState.Timestamp == "" {
+		if canary.Status.ManualState != nil {
+			canary.Status.ManualState = nil
+			canary.Status.LastAppliedManualTimestamp = ""
+			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
+				return false, fmt.Errorf("failed to clear manual state: %w", err)
+			}
+			c.recordEventInfof(canary, "Manual control deactivated, resuming automatic progression")
+		}
+		return false, nil
+	}
+
+	// compare timestamps to see if this is a new command
+	// Also check if the manual state content has changed (for cases where same timestamp but different content)
+	// Parse timestamps as integers to ensure proper numerical comparison
+	manualTimestamp := manualState.Timestamp
+	lastAppliedTimestamp := canary.Status.LastAppliedManualTimestamp
+
+	// If we can parse both as integers (unix timestamps), do numerical comparison, otherwise do string comparison
+	manualTs, manualErr := strconv.Atoi(manualTimestamp)
+	lastAppliedTs, lastAppliedErr := strconv.Atoi(lastAppliedTimestamp)
+
+	// Determine if this is a new command based on timestamp or content changes
+	isNewCommand := false
+	if (manualErr == nil && lastAppliedErr == nil && manualTs > lastAppliedTs) ||
+		(manualErr != nil || lastAppliedErr != nil) && manualTimestamp > lastAppliedTimestamp {
+		isNewCommand = true
+		c.recordEventInfof(canary, "New manual control command received at %s", manualState.Timestamp)
+	}
+
+	hasUpdateWeight := false
+
+	if isNewCommand {
+		// apply new weight if specified
+		if manualState.Weight != nil {
+			weight := *manualState.Weight
+			if weight < 0 || weight > 100 {
+				return false, fmt.Errorf("invalid manual weight %d, must be between 0 and 100", weight)
+			}
+
+			// only set routes if weight is different
+			if canary.Status.CanaryWeight != weight {
+				if err := meshRouter.SetRoutes(canary, 100-weight, weight, false); err != nil {
+					return false, fmt.Errorf("failed to set manual traffic weight: %w", err)
+				}
+				c.recorder.SetWeight(canary, 100-weight, weight)
+				canary.Status.CanaryWeight = weight
+				c.recordEventInfof(canary, "Manual weight set to %d%%", weight)
+				hasUpdateWeight = true
+			}
+		}
+
+		// update status to reflect the new manual state has been applied
+		canary.Status.LastAppliedManualTimestamp = manualState.Timestamp
+		canary.Status.ManualState = manualState // Make sure we update the entire manual state
+		if canary.Status.ManualState.Paused {
+			canary.Status.Phase = flaggerv1.CanaryPhaseWaiting
+		} else {
+			// If not paused, make sure we're not in waiting phase
+			if canary.Status.Phase == flaggerv1.CanaryPhaseWaiting {
+				canary.Status.Phase = flaggerv1.CanaryPhaseProgressing
+			}
+		}
+
+		if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
+			return false, fmt.Errorf("failed to sync status for manual control: %w", err)
+		}
+
+		return hasUpdateWeight || canary.Status.ManualState.Paused, nil
+	}
+
+	return canary.Status.ManualState.Paused, nil
 }
 
 func (c *Controller) runPromotionTrafficShift(canary *flaggerv1.Canary, canaryController canary.Controller,
@@ -659,14 +708,37 @@ func (c *Controller) runCanary(canary *flaggerv1.Canary, canaryController canary
 	meshRouter router.Interface, mirrored bool, canaryWeight int, primaryWeight int, maxWeight int) {
 	primaryName := fmt.Sprintf("%s-primary", canary.Spec.TargetRef.Name)
 
+	// For stepWeights with overflow, we should promote when canaryWeight reaches totalWeight
+	shouldPromote := canaryWeight >= maxWeight
+	c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+		Infof("runCanary: initial shouldPromote=%t, canaryWeight=%d, maxWeight=%d", shouldPromote, canaryWeight, maxWeight)
+	// Special case for stepWeights with overflow
+	if len(canary.GetAnalysis().StepWeights) > 0 {
+		lastStepWeight := canary.GetAnalysis().StepWeights[len(canary.GetAnalysis().StepWeights)-1]
+		totalWeight := c.totalWeight(canary)
+		// If the last step is beyond totalWeight, promote when we reach totalWeight
+		if lastStepWeight > totalWeight && canaryWeight >= totalWeight {
+			shouldPromote = true
+		}
+		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			Infof("runCanary: stepWeights check lastStepWeight=%d, totalWeight=%d, shouldPromote=%t", lastStepWeight, totalWeight, shouldPromote)
+	}
+
+	// Additional check: if we've reached maximum possible weight, we should promote
+	totalWeight := c.totalWeight(canary)
+	if canaryWeight >= totalWeight {
+		shouldPromote = true
+		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			Infof("runCanary: totalWeight check canaryWeight=%d, totalWeight=%d, shouldPromote=%t", canaryWeight, totalWeight, shouldPromote)
+	}
+
 	// increase traffic weight
-	if canaryWeight < maxWeight {
+	if !shouldPromote {
 		// If in "mirror" mode, do one step of mirroring before shifting traffic to canary.
 		// When mirroring, all requests go to primary and canary, but only responses from
 		// primary go back to the user.
 
-		var nextStepWeight int
-		nextStepWeight = c.nextStepWeight(canary, canaryWeight)
+		var nextStepWeight int = c.nextStepWeight(canary, canaryWeight)
 		if canary.GetAnalysis().Mirror && canaryWeight == 0 {
 			if !mirrored {
 				mirrored = true
@@ -706,9 +778,16 @@ func (c *Controller) runCanary(canary *flaggerv1.Canary, canaryController canary
 	}
 
 	// promote canary - max weight reached
-	if canaryWeight >= maxWeight {
+	if shouldPromote {
+		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			Infof("runCanary: promoting canary, shouldPromote=%t, canaryWeight=%d, maxWeight=%d", shouldPromote, canaryWeight, maxWeight)
 		// check promotion gate
-		if promote := c.runConfirmPromotionHooks(canary, canaryController); !promote {
+		promote := c.runConfirmPromotionHooks(canary, canaryController)
+		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+			Infof("runCanary: promotion gate result: %t", promote)
+		if !promote {
+			c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+				Infof("runCanary: promotion gate not passed")
 			return
 		}
 
@@ -852,7 +931,7 @@ func (c *Controller) runAnalysis(canary *flaggerv1.Canary) (bool, error) {
 	// run external checks
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == "" || webhook.Type == flaggerv1.RolloutHook {
-			err := CallWebhook(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
+			_, err := CallWebhookWithResponse(*canary, flaggerv1.CanaryPhaseProgressing, webhook)
 			if err != nil {
 				c.recordEventWarningf(canary, "Halt %s.%s advancement external check %s failed %v",
 					canary.Name, canary.Namespace, webhook.Name, err)
@@ -934,8 +1013,7 @@ func (c *Controller) shouldSkipAnalysis(canary *flaggerv1.Canary, canaryControll
 
 	// notify
 	c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseSucceeded)
-	c.recordEventInfof(canary, "Promotion completed! Canary analysis was skipped for %s.%s",
-		canary.Spec.TargetRef.Name, canary.Namespace)
+	c.recordEventInfof(canary, "Promotion completed! Scaling down %s.%s", canary.Spec.TargetRef.Name, canary.Namespace)
 	c.alert(canary, "Canary analysis was skipped, promotion finished.",
 		false, flaggerv1.SeveritySuccess)
 
@@ -985,10 +1063,17 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 		return true
 	}
 
+	// If canary is waiting due to manual traffic control, don't advance the status
+	if canary.Status.Phase == flaggerv1.CanaryPhaseWaiting &&
+		canary.Status.ManualState != nil &&
+		canary.Status.ManualState.Paused {
+		return true
+	}
+
 	var err error
 	canary, err = c.flaggerClient.FlaggerV1beta1().Canaries(canary.Namespace).Get(context.TODO(), canary.Name, metav1.GetOptions{})
 	if err != nil {
-		c.logCanaryEvent(canary, fmt.Sprintf("Failed get canary"), zapcore.ErrorLevel)
+		c.logCanaryEvent(canary, "Failed get canary", zapcore.ErrorLevel)
 		return false
 	}
 
@@ -1014,13 +1099,13 @@ func (c *Controller) checkCanaryStatus(canary *flaggerv1.Canary, canaryControlle
 			return false
 		}
 		if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseProgressing, LastStartTime: metav1.Now()}); err != nil {
-			c.logCanaryEvent(canary, fmt.Sprintf("Failed to update canary status"), zapcore.ErrorLevel)
+			c.logCanaryEvent(canary, "Failed to update canary status", zapcore.ErrorLevel)
 			return false
 		}
 		c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseProgressing)
 		canary, err = c.flaggerClient.FlaggerV1beta1().Canaries(canary.Namespace).Get(context.TODO(), canary.Name, metav1.GetOptions{})
 		if err != nil {
-			c.logCanaryEvent(canary, fmt.Sprintf("Failed get canary"), zapcore.ErrorLevel)
+			c.logCanaryEvent(canary, "Failed get canary", zapcore.ErrorLevel)
 			return false
 		}
 		c.recordEventInfof(canaryPhaseProgressing, "New revision detected! Scaling up %s.%s", canaryPhaseProgressing.Spec.TargetRef.Name, canaryPhaseProgressing.Namespace)

@@ -23,3 +23,11 @@ echo '>>> Deploy podinfo'
 kubectl apply -f ${REPO_ROOT}/test/workloads/secret.yaml -n test
 kubectl apply -f ${REPO_ROOT}/test/workloads/deployment.yaml -n test
 kubectl apply -f ${REPO_ROOT}/test/workloads/daemonset.yaml -n test
+
+echo '>>> Waiting for podinfo deployment to be ready'
+kubectl -n test rollout status deployment/podinfo --timeout=60s
+
+echo '>>> Waiting for podinfo daemonset to be ready'
+kubectl -n test rollout status daemonset/podinfo-ds --timeout=60s
+
+echo '>>> All test workloads deployed successfully'

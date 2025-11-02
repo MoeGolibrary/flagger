@@ -366,6 +366,36 @@ func TestServiceRouter_Finalize(t *testing.T) {
 	}
 }
 
+func TestServiceRouter_FinalizeEdgeCases(t *testing.T) {
+	mocks := newFixture(nil)
+	router := &KubernetesDefaultRouter{
+		kubeClient:    mocks.kubeClient,
+		flaggerClient: mocks.flaggerClient,
+		logger:        mocks.logger,
+		labelSelector: "app",
+		labelValue:    "podinfo",
+	}
+
+	// Test Finalize when service doesn't exist
+	err := router.Finalize(mocks.canary)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "service podinfo.default get query error")
+
+	// Test Finalize with owned service (should not make changes)
+	err = router.Initialize(mocks.canary)
+	require.NoError(t, err)
+	err = router.Reconcile(mocks.canary)
+	require.NoError(t, err)
+
+	err = router.Finalize(mocks.canary)
+	require.NoError(t, err)
+
+	// Verify service still exists and is unchanged
+	svc, err := mocks.kubeClient.CoreV1().Services("default").Get(context.TODO(), "podinfo", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "podinfo-primary", svc.Spec.Selector["app"])
+}
+
 func TestServiceRouter_InitializeMetadata(t *testing.T) {
 	mocks := newFixture(nil)
 	router := &KubernetesDefaultRouter{
@@ -446,4 +476,72 @@ func TestServiceRouter_ReconcileMetadata(t *testing.T) {
 	assert.Equal(t, "test", apexSvc.Annotations["test1"])
 	assert.Equal(t, "test1", apexSvc.Labels["test"])
 	assert.Equal(t, "podinfo", apexSvc.Labels["app"])
+}
+
+func TestServiceRouter_AppProtocol(t *testing.T) {
+	mocks := newFixture(nil)
+	router := &KubernetesDefaultRouter{
+		kubeClient:    mocks.kubeClient,
+		flaggerClient: mocks.flaggerClient,
+		logger:        mocks.logger,
+	}
+
+	// Test with appProtocol set
+	appProtocol := "http"
+	mocks.canary.Spec.Service.AppProtocol = appProtocol
+
+	err := router.Initialize(mocks.canary)
+	require.NoError(t, err)
+
+	err = router.Reconcile(mocks.canary)
+	require.NoError(t, err)
+
+	canarySvc, err := mocks.kubeClient.CoreV1().Services("default").Get(context.TODO(), "podinfo-canary", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, &appProtocol, canarySvc.Spec.Ports[0].AppProtocol)
+
+	primarySvc, err := mocks.kubeClient.CoreV1().Services("default").Get(context.TODO(), "podinfo-primary", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, &appProtocol, primarySvc.Spec.Ports[0].AppProtocol)
+
+	apexSvc, err := mocks.kubeClient.CoreV1().Services("default").Get(context.TODO(), "podinfo", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, &appProtocol, apexSvc.Spec.Ports[0].AppProtocol)
+}
+
+func TestServiceRouter_NodePortPreservation(t *testing.T) {
+	mocks := newFixture(nil)
+	router := &KubernetesDefaultRouter{
+		kubeClient:    mocks.kubeClient,
+		flaggerClient: mocks.flaggerClient,
+		logger:        mocks.logger,
+	}
+
+	// Initialize services first
+	err := router.Initialize(mocks.canary)
+	require.NoError(t, err)
+
+	err = router.Reconcile(mocks.canary)
+	require.NoError(t, err)
+
+	// Get the canary service and modify it to have a NodePort
+	canarySvc, err := mocks.kubeClient.CoreV1().Services("default").Get(context.TODO(), "podinfo-canary", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	// Set a NodePort
+	canarySvc.Spec.Ports[0].NodePort = 30001
+	_, err = mocks.kubeClient.CoreV1().Services("default").Update(context.TODO(), canarySvc, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	// Reconcile again - NodePort should be preserved
+	err = router.Initialize(mocks.canary)
+	require.NoError(t, err)
+
+	err = router.Reconcile(mocks.canary)
+	require.NoError(t, err)
+
+	// Check that NodePort is preserved
+	updatedSvc, err := mocks.kubeClient.CoreV1().Services("default").Get(context.TODO(), "podinfo-canary", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, int32(30001), updatedSvc.Spec.Ports[0].NodePort)
 }

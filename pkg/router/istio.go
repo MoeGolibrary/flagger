@@ -269,6 +269,8 @@ func (ir *IstioRouter) reconcileVirtualService(canary *flaggerv1.Canary) error {
 					Route: canaryRoute,
 				},
 			},
+			// Clear HTTP routes when using TCP
+			Http: []istiov1beta1.HTTPRoute{},
 		}
 	} else {
 		newSpec = istiov1beta1.VirtualServiceSpec{
@@ -286,6 +288,8 @@ func (ir *IstioRouter) reconcileVirtualService(canary *flaggerv1.Canary) error {
 					Route:      canaryRoute,
 				},
 			},
+			// Clear TCP routes when using HTTP
+			Tcp: []istiov1beta1.TCPRoute{},
 		}
 	}
 
@@ -303,7 +307,9 @@ func (ir *IstioRouter) reconcileVirtualService(canary *flaggerv1.Canary) error {
 
 	canaryWeight := canary.Status.CanaryWeight
 	primaryWeight := 100 - canaryWeight
-	mirrored := canary.GetAnalysis().Mirror
+	// During reconcile, mirroring should not be automatically enabled even if specified in the spec
+	// Mirroring is activated as a temporary stage via SetRoutes
+	mirrored := false
 
 	// 更新路由权重等
 	ir.updateRouteWeights(canary, primaryWeight, canaryWeight, mirrored, &newSpec)
@@ -373,7 +379,7 @@ func (ir *IstioRouter) reconcileVirtualServiceDo(canary *flaggerv1.Canary, apexN
 
 	ignoreCmpOptions := []cmp.Option{
 		cmpopts.IgnoreFields(istiov1beta1.HTTPRouteDestination{}, "Weight"),
-		cmpopts.IgnoreFields(istiov1beta1.HTTPRoute{}, "Mirror", "MirrorPercentage"),
+		// Don't ignore Mirror and MirrorPercentage fields as they need to be updated for mirroring
 	}
 	if canary.Spec.Analysis.SessionAffinity != nil {
 		// We ignore this route as this does not do weighted routing and is handled exclusively
@@ -459,7 +465,9 @@ func (ir *IstioRouter) GetRoutes(canary *flaggerv1.Canary) (
 		return
 	}
 
-	if isTcp(canary) {
+	// Check if VirtualService has TCP routes (original TCP canary)
+	// A canary is considered TCP if it has TCP routes in the VirtualService, regardless of current spec
+	if len(vs.Spec.Tcp) > 0 {
 		ir.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
 			With("canary_name", canary.Name).
 			With("canary_namespace", canary.Namespace).
@@ -512,6 +520,7 @@ func (ir *IstioRouter) GetRoutes(canary *flaggerv1.Canary) (
 			canaryWeight = route.Weight
 		}
 	}
+	// Check if the canary-route specifically has mirroring enabled
 	if httpRoute.Mirror != nil && httpRoute.Mirror.Host != "" {
 		mirrored = true
 	}
@@ -622,13 +631,29 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 			makeDestination(canary, canaryName, canaryWeight, true),
 		},
 	}
-	newSpec.Http = []istiov1beta1.HTTPRoute{
-		makeCustomerRefactorRoute(canary),
-		weightedRoute,
-	}
 
+	// For session affinity, we need to build the routes differently
 	if canary.Spec.Analysis.SessionAffinity != nil {
+		// Use the session affinity route generation which will include all necessary routes
 		newSpec.Http = ir.getSessionAffinityRoute(canary, canaryWeight, primaryName, canaryName, weightedRoute)
+	} else {
+		// Initialize with customer refactor route and weighted route for non-session affinity cases
+		// But only add customer refactor route for specific services
+		apexName, _, _ := canary.GetServiceNames()
+		needsCustomerRefactorRoute := apexName == "moego-customer" ||
+			apexName == "moego-service-customer" ||
+			apexName == "moego-svc-business-customer"
+
+		if needsCustomerRefactorRoute {
+			newSpec.Http = []istiov1beta1.HTTPRoute{
+				makeCustomerRefactorRoute(canary),
+				weightedRoute,
+			}
+		} else {
+			newSpec.Http = []istiov1beta1.HTTPRoute{
+				weightedRoute,
+			}
+		}
 	}
 
 	// fix routing (A/B testing)
@@ -638,8 +663,11 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 		// if stepWeight or stepWeights are set, then the canary route is the only one
 		if canary.GetAnalysis().StepWeight > 0 || canary.GetAnalysis().StepWeights != nil {
 			if canary.Spec.Analysis.SessionAffinity != nil {
-				stickyRoute := newSpec.Http[1].DeepCopy()
-				newSpec.Http[1].Match = append(canaryMatch, stickyRoute.Match...)
+				// For session affinity, update the sticky route
+				if len(newSpec.Http) > 1 {
+					stickyRoute := newSpec.Http[1].DeepCopy()
+					newSpec.Http[1].Match = append(canaryMatch, stickyRoute.Match...)
+				}
 			} else {
 				matchRoute := []istiov1beta1.HTTPRouteDestination{
 					makeDestination(canary, primaryName, 100, false),
@@ -653,8 +681,8 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 					}
 				}
 
+				// For A/B testing, replace routes entirely
 				newSpec.Http = []istiov1beta1.HTTPRoute{
-					makeCustomerRefactorRoute(canary),
 					{
 						Match:      canaryMatch,
 						Rewrite:    canary.Spec.Service.GetIstioRewrite(),
@@ -682,11 +710,12 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 		} else {
 			// add session affinity
 			if canary.Spec.Analysis.SessionAffinity != nil {
-				stickyRoute := newSpec.Http[1].DeepCopy()
-				newSpec.Http[1].Match = append(canaryMatch, stickyRoute.Match...)
+				if len(newSpec.Http) > 1 {
+					stickyRoute := newSpec.Http[1].DeepCopy()
+					newSpec.Http[1].Match = append(canaryMatch, stickyRoute.Match...)
+				}
 			} else {
 				newSpec.Http = []istiov1beta1.HTTPRoute{
-					makeCustomerRefactorRoute(canary),
 					{
 						Name:       canaryRouteName,
 						Match:      canaryMatch,
@@ -719,12 +748,18 @@ func (ir *IstioRouter) updateRouteWeights(canary *flaggerv1.Canary,
 
 	// mirror
 	if mirrored {
-		newSpec.Http[1].Mirror = &istiov1beta1.Destination{
-			Host: canaryName,
-		}
+		// Find the weighted route (canary-route) and add mirroring to it
+		for i := range newSpec.Http {
+			if newSpec.Http[i].Name == canaryRouteName {
+				newSpec.Http[i].Mirror = &istiov1beta1.Destination{
+					Host: canaryName,
+				}
 
-		if mw := canary.GetAnalysis().MirrorWeight; mw > 0 {
-			newSpec.Http[1].MirrorPercentage = &istiov1beta1.Percent{Value: float64(mw)}
+				if mw := canary.GetAnalysis().MirrorWeight; mw > 0 {
+					newSpec.Http[i].MirrorPercentage = &istiov1beta1.Percent{Value: float64(mw)}
+				}
+				break
+			}
 		}
 	}
 }
@@ -740,9 +775,19 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 	// and match the value of the `Set-Cookie` header will be routed to the canary deployment.
 	stickyRoute := weightedRoute
 	stickyRoute.Name = stickyRouteName
+
+	// Determine cookie names
+	cookieName := canary.Spec.Analysis.SessionAffinity.CookieName
+	primaryCookieName := canary.Spec.Analysis.SessionAffinity.PrimaryCookieName
+
+	// Use default cookie name for primary if not specified
+	if primaryCookieName == "" {
+		primaryCookieName = cookieName
+	}
+
 	if canaryWeight != 0 {
 		if canary.Status.SessionAffinityCookie == "" {
-			canary.Status.SessionAffinityCookie = fmt.Sprintf("%s=%s", canary.Spec.Analysis.SessionAffinity.CookieName, randSeq())
+			canary.Status.SessionAffinityCookie = fmt.Sprintf("%s=%s", cookieName, randSeq())
 		}
 
 		for i, routeDest := range weightedRoute.Route {
@@ -817,12 +862,54 @@ func (ir *IstioRouter) getSessionAffinityRoute(
 			stickyRoute.Headers.Response.Add[setCookieHeader] = fmt.Sprintf("%s; %s=%d", previousCookie, maxAgeAttr, -1)
 		}
 
+		// Set primary cookie if specified
+		if primaryCookieName != cookieName {
+			// Set a separate cookie for primary traffic
+			for i, routeDest := range weightedRoute.Route {
+				if routeDest.Destination.Host == primaryName {
+					if routeDest.Headers == nil {
+						routeDest.Headers = &istiov1beta1.Headers{
+							Response: &istiov1beta1.HeaderOperations{
+								Add: make(map[string]string),
+							},
+						}
+					} else if routeDest.Headers.Response == nil {
+						routeDest.Headers.Response = &istiov1beta1.HeaderOperations{
+							Add: make(map[string]string),
+						}
+					} else if routeDest.Headers.Response.Add == nil {
+						routeDest.Headers.Response.Add = make(map[string]string)
+					}
+					// Set a cookie to identify primary traffic
+					primaryCookieValue := randSeq()
+					routeDest.Headers.Response.Add[setCookieHeader] = fmt.Sprintf("%s=%s; %s=%d", primaryCookieName, primaryCookieValue, maxAgeAttr,
+						canary.Spec.Analysis.SessionAffinity.GetMaxAge(),
+					)
+				}
+				weightedRoute.Route[i] = routeDest
+			}
+		}
+
 		canary.Status.SessionAffinityCookie = ""
 	}
-	return []istiov1beta1.HTTPRoute{
-		makeCustomerRefactorRoute(canary),
-		stickyRoute,
-		weightedRoute,
+
+	// Check if we need the customer refactor route
+	apexName, _, _ := canary.GetServiceNames()
+	needsCustomerRefactorRoute := apexName == "moego-customer" ||
+		apexName == "moego-service-customer" ||
+		apexName == "moego-svc-business-customer"
+
+	if needsCustomerRefactorRoute {
+		return []istiov1beta1.HTTPRoute{
+			makeCustomerRefactorRoute(canary),
+			stickyRoute,
+			weightedRoute,
+		}
+	} else {
+		return []istiov1beta1.HTTPRoute{
+			stickyRoute,
+			weightedRoute,
+		}
 	}
 }
 
@@ -898,10 +985,12 @@ func mergeMatchConditions(canary, defaults []istiov1beta1.HTTPMatchRequest) []is
 	return merged
 }
 
-// TODO 去掉或者优化
+// makeCustomerRefactorRoute creates a route for customer refactor feature
 func makeCustomerRefactorRoute(canary *flaggerv1.Canary) istiov1beta1.HTTPRoute {
-	apexName, _, _ := canary.GetServiceNames()
-	host := apexName
+	apexName, primaryName, _ := canary.GetServiceNames()
+	host := primaryName
+
+	// Check if this is one of the specific services that need the refactor route
 	if apexName == "moego-customer" || apexName == "moego-service-customer" || apexName == "moego-svc-business-customer" {
 		host = fmt.Sprintf("%s-feature-customer-refactor", apexName)
 	}

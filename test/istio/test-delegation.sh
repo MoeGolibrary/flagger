@@ -11,7 +11,7 @@ set -o errexit
 
 echo '>>> Initialising Gateway'
 cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: istio-ingressgateway
@@ -31,7 +31,7 @@ EOF
 
 echo '>>> Initialising root virtual service'
 cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: root-vs
