@@ -457,17 +457,15 @@ type CanaryWebhookPayload struct {
 	Checksum string `json:"checksum"`
 
 	// BuildId of the Workload
-	BuildId string `json:"build_id"`
+	BuildId string `json:"buildId"`
 
 	// Type
 	Type HookType `json:"type"`
 
-	FailedChecks  int           `json:"failed_checks"`
-	CanaryWeight  int           `json:"canary_weight"`
+	FailedChecks  int           `json:"failedChecks"`
+	CanaryWeight  int           `json:"canaryWeight"`
 	Iterations    int           `json:"iterations"`
-	RemainingTime time.Duration `json:"remaining_time"`
-
-	ManualStepWeight int `json:"manual_step_weight,omitempty"`
+	RemainingTime time.Duration `json:"remainingTime"`
 
 	// Metadata (key-value pairs) for this webhook
 	Metadata map[string]string `json:"metadata,omitempty"`

@@ -197,8 +197,6 @@ func (c *Controller) runManualTrafficControlHooks(canary *flaggerv1.Canary) (*fl
 				c.recordEventWarningf(canary, "Manual traffic control webhook %s failed: %v", webhook.Name, err)
 				return nil, err
 			}
-			// TODO rm 输出响应
-			c.recordEventInfof(canary, "Manual traffic control webhook %s response: %v", webhook.Name, data)
 
 			// unmarshal response
 			var manualState flaggerv1.CanaryManualState
