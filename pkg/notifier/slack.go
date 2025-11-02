@@ -25,6 +25,37 @@ import (
 	"strings"
 )
 
+// Slack action constants
+const (
+	SkipCanaryAction      = "skip_canary"
+	RollbackCanaryAction  = "rollback_canary"
+	PauseAtWeightAction   = "pause_at_weight"
+	SetWeightAction       = "set_weight"
+	ResumeCanaryAction    = "resume_canary"
+	GetStatusAction       = "get_status"
+	WeightInputBlockID    = "weight_input_block"
+	WeightInputElementID  = "weight_input"
+	ActionsBlockID        = "actions"
+	
+	// Button labels
+	SkipCanaryLabel       = "Skip Canary"
+	RollbackLabel         = "Rollback"
+	PauseAtWeightLabel    = "Pause at Weight"
+	SetWeightLabel        = "Set Weight"
+	ResumeLabel           = "Resume"
+	GetStatusLabel        = "Get Status"
+	WeightLabel           = "Weight"
+	WeightPlaceholder     = "Enter weight"
+	WeightHint            = "Enter weight(0.0-100.0)"
+	
+	// Confirmation dialog texts
+	ConfirmTitle          = "Are you sure?"
+	SkipConfirmText       = "This will skip the canary test.\n *Workload:* %s \n *Namespace:* %s \n"
+	RollbackConfirmText   = "This will rollback the canary test.\n *Workload:* %s \n *Namespace:* %s \n"
+	YesLabel              = "Yes"
+	NoLabel               = "No"
+)
+
 // Slack holds the hook URL
 type Slack struct {
 	URL      string
@@ -110,30 +141,30 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 
 			// Add additional buttons
 			elements = append(elements, slack.NewButtonBlockElement(
-				"skip_canary",
+				SkipCanaryAction,
 				canaryId,
-				slack.NewTextBlockObject("plain_text", "Skip Canary", false, false),
+				slack.NewTextBlockObject("plain_text", SkipCanaryLabel, false, false),
 			).WithStyle(slack.StyleDanger).WithConfirm(
 				slack.NewConfirmationBlockObject(
-					slack.NewTextBlockObject("plain_text", "Are you sure?", false, false),
-					slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("This will skip the canary test.\n *Workload:* %s \n *Namespace:* %s \n",
+					slack.NewTextBlockObject("plain_text", ConfirmTitle, false, false),
+					slack.NewTextBlockObject("mrkdwn", fmt.Sprintf(SkipConfirmText,
 						workload, namespace), false, false),
-					slack.NewTextBlockObject("plain_text", "Yes", false, false),
-					slack.NewTextBlockObject("plain_text", "No", false, false),
+					slack.NewTextBlockObject("plain_text", YesLabel, false, false),
+					slack.NewTextBlockObject("plain_text", NoLabel, false, false),
 				),
 			))
 
 			elements = append(elements, slack.NewButtonBlockElement(
-				"rollback_canary",
+				RollbackCanaryAction,
 				canaryId,
-				slack.NewTextBlockObject("plain_text", "Rollback", false, false),
+				slack.NewTextBlockObject("plain_text", RollbackLabel, false, false),
 			).WithStyle(slack.StyleDanger).WithConfirm(
 				slack.NewConfirmationBlockObject(
-					slack.NewTextBlockObject("plain_text", "Are you sure?", false, false),
-					slack.NewTextBlockObject("mrkdwn", fmt.Sprintf("This will rollback the canary test.\n *Workload:* %s \n *Namespace:* %s \n",
+					slack.NewTextBlockObject("plain_text", ConfirmTitle, false, false),
+					slack.NewTextBlockObject("mrkdwn", fmt.Sprintf(RollbackConfirmText,
 						workload, namespace), false, false),
-					slack.NewTextBlockObject("plain_text", "Yes", false, false),
-					slack.NewTextBlockObject("plain_text", "No", false, false),
+					slack.NewTextBlockObject("plain_text", YesLabel, false, false),
+					slack.NewTextBlockObject("plain_text", NoLabel, false, false),
 				),
 			))
 
@@ -143,25 +174,25 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 			weightInput := slack.NewPlainTextInputBlockElement(
 				&slack.TextBlockObject{
 					Type: "plain_text",
-					Text: "Weight (0.0-100.0)",
+					Text: WeightLabel,
 				},
-				"weight_input",
+				WeightInputElementID,
 			)
 			weightInput.Placeholder = &slack.TextBlockObject{
 				Type: "plain_text",
-				Text: "Enter weight",
+				Text: WeightPlaceholder,
 			}
 
 			// 创建输入框区块
 			inputBlock := slack.NewInputBlock(
-				"weight_input_block",
+				WeightInputBlockID,
 				&slack.TextBlockObject{
 					Type: "plain_text",
-					Text: "Weight",
+					Text: WeightLabel,
 				},
 				&slack.TextBlockObject{
 					Type: "plain_text",
-					Text: "Enter weight(0.0-100.0)",
+					Text: WeightHint,
 				},
 				weightInput,
 			)
@@ -169,29 +200,36 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 
 			// Pause at Weight button
 			elements = append(elements, slack.NewButtonBlockElement(
-				"pause_at_weight",
+				PauseAtWeightAction,
 				canaryId,
-				slack.NewTextBlockObject("plain_text", "Pause at Weight", false, false),
+				slack.NewTextBlockObject("plain_text", PauseAtWeightLabel, false, false),
 			).WithStyle(slack.StylePrimary))
 
 			// Set Weight button
 			elements = append(elements, slack.NewButtonBlockElement(
-				"set_weight",
+				SetWeightAction,
 				canaryId,
-				slack.NewTextBlockObject("plain_text", "Set Weight", false, false),
+				slack.NewTextBlockObject("plain_text", SetWeightLabel, false, false),
 			).WithStyle(slack.StylePrimary))
 
 			// Resume button
 			elements = append(elements, slack.NewButtonBlockElement(
-				"resume_canary",
+				ResumeCanaryAction,
 				canaryId,
-				slack.NewTextBlockObject("plain_text", "Resume", false, false),
+				slack.NewTextBlockObject("plain_text", ResumeLabel, false, false),
+			).WithStyle(slack.StylePrimary))
+
+			// Get Status button
+			elements = append(elements, slack.NewButtonBlockElement(
+				GetStatusAction,
+				canaryId,
+				slack.NewTextBlockObject("plain_text", GetStatusLabel, false, false),
 			).WithStyle(slack.StylePrimary))
 		}
 
 		if len(elements) > 0 {
 			actionsBlock := slack.NewActionBlock(
-				"actions",
+				ActionsBlockID,
 				elements...,
 			)
 			blocks = append(blocks, actionsBlock)
