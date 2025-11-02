@@ -84,8 +84,91 @@ func TestServer_HandleNewBashTaskCmdExitNonZero(t *testing.T) {
 	assert.Equal(t, "command false failed: : exit status 1", resp.Body.String())
 }
 
+func TestServer_HandleSetManualTrafficControl(t *testing.T) {
+	mocks := newServerFixture()
+	resp := httptest.NewRecorder()
+	
+	// Create a request with manual traffic control state
+	manualState := flaggerv1.CanaryManualState{
+		Weight:    intPtr(40),
+		Paused:    true,
+		Timestamp: "1234567890",
+	}
+	
+	payload, _ := json.Marshal(manualState)
+	req, _ := http.NewRequest("POST", "/traffic/", bytes.NewReader(payload))
+	req.Header.Set("Canary-Name", "podinfo")
+	req.Header.Set("Canary-Namespace", "default")
+	
+	HandleSetManualTrafficControl(mocks.logger, NewAuthorizer(nil))(resp, req)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+	
+	// Parse the response to verify it matches the expected structure
+	var response struct {
+		ManualTrafficControl struct {
+			Weight    float64 `json:"weight"`
+			Paused    bool    `json:"paused"`
+			Timestamp string  `json:"timestamp"`
+		} `json:"manualTrafficControl"`
+	}
+	
+	err := json.Unmarshal(resp.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	assert.Equal(t, float64(40), response.ManualTrafficControl.Weight)
+	assert.Equal(t, true, response.ManualTrafficControl.Paused)
+	assert.Equal(t, "1234567890", response.ManualTrafficControl.Timestamp)
+}
+
+func TestServer_HandleGetManualTrafficControl(t *testing.T) {
+	mocks := newServerFixture()
+	resp := httptest.NewRecorder()
+	
+	// First set a manual state
+	manualState := flaggerv1.CanaryManualState{
+		Weight:    intPtr(60),
+		Paused:    false,
+		Timestamp: "0987654321",
+	}
+	storeKey := "default.podinfo"
+	manualStateStore.SetState(storeKey, &manualState)
+	
+	// Create a request to get the manual traffic control state
+	payload := flaggerv1.CanaryWebhookPayload{
+		Name:      "podinfo",
+		Namespace: "default",
+	}
+	
+	payloadBytes, _ := json.Marshal(payload)
+	req, _ := http.NewRequest("POST", "/traffic/state", bytes.NewReader(payloadBytes))
+	
+	HandleGetManualTrafficControl(mocks.logger, NewAuthorizer(nil))(resp, req)
+
+	assert.Equal(t, http.StatusOK, resp.Code)
+	
+	// Parse the response to verify it matches the expected structure
+	var response struct {
+		ManualTrafficControl struct {
+			Weight    float64 `json:"weight"`
+			Paused    bool    `json:"paused"`
+			Timestamp string  `json:"timestamp"`
+		} `json:"manualTrafficControl"`
+	}
+	
+	err := json.Unmarshal(resp.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	assert.Equal(t, float64(60), response.ManualTrafficControl.Weight)
+	assert.Equal(t, false, response.ManualTrafficControl.Paused)
+	assert.Equal(t, "0987654321", response.ManualTrafficControl.Timestamp)
+}
+
 func newJsonRequest(method string, url string, v interface{}) *http.Request {
 	payload, _ := json.Marshal(v)
 	req, _ := http.NewRequest(method, url, bytes.NewReader(payload))
 	return req
+}
+
+// Helper function to create int pointer
+func intPtr(i int) *int {
+	return &i
 }

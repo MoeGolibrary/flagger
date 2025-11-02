@@ -349,10 +349,35 @@ func HandleSetManualTrafficControl(logger *zap.SugaredLogger, authorizer *Author
 		// Store the manual state in a global store
 		manualStateStore.SetState(storeKey, &manualState)
 
-		// Return the stored state
+		// Return the CanaryWebhookResponse with manualTrafficControl field
+		response := struct {
+			ManualTrafficControl struct {
+				Weight    float64 `json:"weight"`
+				Paused    bool    `json:"paused"`
+				Timestamp string  `json:"timestamp"`
+			} `json:"manualTrafficControl"`
+		}{
+			ManualTrafficControl: struct {
+				Weight    float64 `json:"weight"`
+				Paused    bool    `json:"paused"`
+				Timestamp string  `json:"timestamp"`
+			}{
+				Weight:    0,
+				Paused:    false,
+				Timestamp: "",
+			},
+		}
+		
+		// Set the values properly
+		if manualState.Weight != nil {
+			response.ManualTrafficControl.Weight = float64(*manualState.Weight)
+		}
+		response.ManualTrafficControl.Paused = manualState.Paused
+		response.ManualTrafficControl.Timestamp = manualState.Timestamp
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(manualState); err != nil {
+		if err := json.NewEncoder(w).Encode(response); err != nil {
 			logger.Error("encoding response failed", zap.Error(err))
 		}
 		logger.Infof("Successfully set manual traffic control for canary %s in namespace %s", canaryName, canaryNamespace)
@@ -397,10 +422,33 @@ func HandleGetManualTrafficControl(logger *zap.SugaredLogger, authorizer *Author
 			state = &flaggerv1.CanaryManualState{}
 		}
 
-		// Return the stored state
+		// Return the CanaryWebhookResponse with manualTrafficControl field
+		response := struct {
+			ManualTrafficControl struct {
+				Weight    float64 `json:"weight"`
+				Paused    bool    `json:"paused"`
+				Timestamp string  `json:"timestamp"`
+			} `json:"manualTrafficControl"`
+		}{
+			ManualTrafficControl: struct {
+				Weight    float64 `json:"weight"`
+				Paused    bool    `json:"paused"`
+				Timestamp string  `json:"timestamp"`
+			}{
+				Weight:    0,
+				Paused:    state.Paused,
+				Timestamp: state.Timestamp,
+			},
+		}
+		
+		// Set the weight value properly
+		if state.Weight != nil {
+			response.ManualTrafficControl.Weight = float64(*state.Weight)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(state); err != nil {
+		if err := json.NewEncoder(w).Encode(response); err != nil {
 			logger.Error("encoding response failed", zap.Error(err))
 		}
 		logger.Infof("Successfully retrieved manual traffic control state for canary %s in namespace %s with weight %d and paused=%v at timestamp %s",
