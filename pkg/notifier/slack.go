@@ -27,33 +27,33 @@ import (
 
 // Slack action constants
 const (
-	SkipCanaryAction      = "skip_canary"
-	RollbackCanaryAction  = "rollback_canary"
-	PauseAtWeightAction   = "pause_at_weight"
-	SetWeightAction       = "set_weight"
-	ResumeCanaryAction    = "resume_canary"
-	GetStatusAction       = "get_status"
-	WeightInputBlockID    = "weight_input_block"
-	WeightInputElementID  = "weight_input"
-	ActionsBlockID        = "actions"
-	
+	SkipCanaryAction     = "skip_canary"
+	RollbackCanaryAction = "rollback_canary"
+	PauseAtWeightAction  = "pause_at_weight"
+	SetWeightAction      = "set_weight"
+	ResumeCanaryAction   = "resume_canary"
+	GetStatusAction      = "get_status"
+	WeightInputBlockID   = "weight_input_block"
+	WeightInputElementID = "weight_input"
+	ActionsBlockID       = "actions"
+
 	// Button labels
-	SkipCanaryLabel       = "Skip Canary"
-	RollbackLabel         = "Rollback"
-	PauseAtWeightLabel    = "Pause at Weight"
-	SetWeightLabel        = "Set Weight"
-	ResumeLabel           = "Resume"
-	GetStatusLabel        = "Get Status"
-	WeightLabel           = "Weight"
-	WeightPlaceholder     = "Enter weight"
-	WeightHint            = "Enter weight(0.0-100.0)"
-	
+	SkipCanaryLabel    = "Skip Canary"
+	RollbackLabel      = "Rollback"
+	PauseAtWeightLabel = "Pause at Weight"
+	SetWeightLabel     = "Set Weight"
+	ResumeLabel        = "Resume"
+	GetStatusLabel     = "Get Status"
+	WeightLabel        = "Weight"
+	WeightPlaceholder  = "Enter weight"
+	WeightHint         = "Enter weight(0.0-100.0)"
+
 	// Confirmation dialog texts
-	ConfirmTitle          = "Are you sure?"
-	SkipConfirmText       = "This will skip the canary test.\n *Workload:* %s \n *Namespace:* %s \n"
-	RollbackConfirmText   = "This will rollback the canary test.\n *Workload:* %s \n *Namespace:* %s \n"
-	YesLabel              = "Yes"
-	NoLabel               = "No"
+	ConfirmTitle        = "Are you sure?"
+	SkipConfirmText     = "This will skip the canary test.\n *Workload:* %s \n *Namespace:* %s \n"
+	RollbackConfirmText = "This will rollback the canary test.\n *Workload:* %s \n *Namespace:* %s \n"
+	YesLabel            = "Yes"
+	NoLabel             = "No"
 )
 
 // Slack holds the hook URL
@@ -219,12 +219,12 @@ func (s *Slack) Post(workload string, namespace string, message string, fields [
 				slack.NewTextBlockObject("plain_text", ResumeLabel, false, false),
 			).WithStyle(slack.StylePrimary))
 
-			// Get Status button
-			elements = append(elements, slack.NewButtonBlockElement(
-				GetStatusAction,
-				canaryId,
-				slack.NewTextBlockObject("plain_text", GetStatusLabel, false, false),
-			).WithStyle(slack.StylePrimary))
+			//// Get Status button
+			//elements = append(elements, slack.NewButtonBlockElement(
+			//	GetStatusAction,
+			//	canaryId,
+			//	slack.NewTextBlockObject("plain_text", GetStatusLabel, false, false),
+			//).WithStyle(slack.StylePrimary))
 		}
 
 		if len(elements) > 0 {
