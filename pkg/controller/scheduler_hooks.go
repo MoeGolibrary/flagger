@@ -191,7 +191,7 @@ func (c *Controller) runManualTrafficControlHooks(canary *flaggerv1.Canary) (*fl
 			data, err := CallWebhookWithResponse(*canary, canary.Status.Phase, webhook)
 			if err != nil {
 				c.recordEventWarningf(canary, "Manual traffic control webhook %s failed: %v", webhook.Name, err)
-				return nil, err
+				return nil, nil
 			}
 
 			// unmarshal response
