@@ -184,10 +184,6 @@ func (c *Controller) runSkipHooks(canary *flaggerv1.Canary, phase flaggerv1.Cana
 // runManualTrafficControlHooks checks for manual traffic control settings by calling webhooks.
 // It returns the desired manual state received from the webhook.
 func (c *Controller) runManualTrafficControlHooks(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error) {
-	// internal hook for testing
-	if c.manualStateTestHook != nil {
-		return c.manualStateTestHook(canary)
-	}
 
 	for _, webhook := range canary.GetAnalysis().Webhooks {
 		if webhook.Type == flaggerv1.ManualTrafficControlHook {

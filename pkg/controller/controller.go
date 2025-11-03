@@ -76,9 +76,6 @@ type Controller struct {
 	sendAt        bool
 	datadogKeys   []DatadogKey
 	slackUsersMap map[string]*SlackUser
-
-	// manualStateTestHook is an internal hook for testing manual state logic
-	manualStateTestHook func(canary *flaggerv1.Canary) (*flaggerv1.CanaryManualState, error)
 }
 
 type Informers struct {
