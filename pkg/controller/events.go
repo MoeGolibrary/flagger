@@ -366,7 +366,7 @@ func (c *Controller) getCommitters(canary *flaggerv1.Canary, message string, sev
 	body := *datadogV2.
 		NewListCIAppPipelineEventsOptionalParameters().
 		WithFilterQuery(fmt.Sprintf("ci_level:pipeline @git.repository.id:\"github.com/MoeGolibrary/%s\" @git.branch:%s", repo, branch)).
-		WithFilterFrom(time.Now().Add(time.Hour * 24 * -30)).
+		WithFilterFrom(time.Now().Add(time.Hour * 24 * -3)).
 		WithFilterTo(time.Now()).
 		WithPageLimit(100).
 		WithSort(datadogV2.CIAPPSORT_TIMESTAMP_DESCENDING)
