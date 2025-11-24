@@ -536,7 +536,8 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	// strategy: Canary progressive traffic increase
 	if c.nextStepWeight(cd, canaryWeight) > 0 {
 		// handle manual canary controls
-		if shouldSkipRunCanary, err := c.handleManualStatus(cd, canaryController, meshRouter); err != nil {
+		if shouldSkipRunCanary, err := c.
+			handleManualStatus(cd, canaryController, meshRouter); err != nil {
 			c.recordEventWarningf(cd, "Failed to handle manual status: %v", err)
 			return
 		} else if shouldSkipRunCanary {
@@ -569,12 +570,7 @@ func (c *Controller) handleManualStatus(canary *flaggerv1.Canary, canaryControll
 	// if manual state is not configured, resume
 	if manualState == nil || manualState.Timestamp == "" {
 		if canary.Status.ManualState != nil {
-			canary.Status.ManualState = nil
-			canary.Status.LastAppliedManualTimestamp = ""
-			if err := canaryController.SyncStatus(canary, canary.Status); err != nil {
-				return false, fmt.Errorf("failed to clear manual state: %w", err)
-			}
-			c.recordEventInfof(canary, "Manual control deactivated, resuming automatic progression")
+			return canary.Status.ManualState.Paused, nil
 		}
 		return false, nil
 	}
