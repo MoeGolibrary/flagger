@@ -484,6 +484,15 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 		}
 	} else {
 		if ok, err := c.runAnalysis(cd); !ok {
+			// Handle manual status even when analysis fails
+			// This ensures manual webhooks are processed even when metrics fail
+			if shouldSkipRunCanary, err := c.handleManualStatus(cd, canaryController, meshRouter); err != nil {
+				c.recordEventWarningf(cd, "Failed to handle manual status: %v", err)
+				return
+			} else if shouldSkipRunCanary {
+				return
+			}
+
 			//  skip analysis
 			if errors.Is(err, providers.ErrSkipAnalysis) {
 				if skip := c.shouldSkipAnalysis(cd, canaryController, meshRouter, scalerReconciler, err, retriable); skip {
