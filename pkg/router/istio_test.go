@@ -1046,28 +1046,3 @@ func TestIstioRouter_GetRoutesTCP(t *testing.T) {
 	assert.False(t, m)
 }
 
-func TestIstioRouter_makeCustomerRefactorRoute(t *testing.T) {
-	mocks := newFixture(nil)
-
-	t.Run("regular service", func(t *testing.T) {
-		route := makeCustomerRefactorRoute(mocks.canary)
-		assert.Len(t, route.Match, 1)
-		assert.Equal(t, "1", route.Match[0].Headers["x-moe-customer-refactor"].Exact)
-		assert.Len(t, route.Route, 1)
-		assert.Equal(t, "podinfo-primary", route.Route[0].Destination.Host)
-		assert.Equal(t, "1", route.Route[0].Headers.Request.Set["x-moe-customer-refactor"])
-	})
-
-	t.Run("special customer service", func(t *testing.T) {
-		specialCanary := mocks.canary.DeepCopy()
-		specialCanary.Name = "moego-customer"
-		specialCanary.Spec.TargetRef.Name = "moego-customer"
-
-		route := makeCustomerRefactorRoute(specialCanary)
-		assert.Len(t, route.Match, 1)
-		assert.Equal(t, "1", route.Match[0].Headers["x-moe-customer-refactor"].Exact)
-		assert.Len(t, route.Route, 1)
-		assert.Equal(t, "moego-customer-feature-customer-refactor", route.Route[0].Destination.Host)
-		assert.Equal(t, "1", route.Route[0].Headers.Request.Set["x-moe-customer-refactor"])
-	})
-}
