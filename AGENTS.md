@@ -1,8 +1,32 @@
+<!-- OPENSPEC:START -->
+
+# OpenSpec Instructions
+
+These instructions are for AI assistants working in this project.
+
+Always open `@/openspec/AGENTS.md` when the request:
+
+- Mentions planning or proposals (words like proposal, spec, change, plan)
+- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Sounds ambiguous and you need the authoritative spec before coding
+
+Use `@/openspec/AGENTS.md` to learn:
+
+- How to create and apply change proposals
+- Spec format and conventions
+- Project structure and guidelines
+
+Keep this managed block so 'openspec update' can refresh the instructions.
+
+<!-- OPENSPEC:END -->
+
 # Flagger Development Guide
 
 ## Project Overview
 
-Flagger is a progressive delivery tool for Kubernetes that automates canary deployments, A/B testing, and blue/green deployments using service mesh or ingress controllers. It integrates with various platforms like Istio, Linkerd, App Mesh, and others.
+Flagger is a progressive delivery tool for Kubernetes that automates canary deployments, A/B testing, and blue/green
+deployments using service mesh or ingress controllers. It integrates with various platforms like Istio, Linkerd, App
+Mesh, and others.
 
 ## Project Structure
 
@@ -26,6 +50,7 @@ Flagger is a progressive delivery tool for Kubernetes that automates canary depl
 ```
 
 ## Dev environment tips
+
 - Use `make build` to build the Flagger binary for your platform
 - Use `make test` to run all unit tests
 - Use `make test-coverage` to run tests with coverage report
@@ -41,11 +66,13 @@ Flagger is a progressive delivery tool for Kubernetes that automates canary depl
 ### Building the Project
 
 To build the Flagger binary:
+
 ```bash
 make build
 ```
 
 To build the Docker image:
+
 ```bash
 make build-image TAG=<your-tag>
 ```
@@ -53,16 +80,19 @@ make build-image TAG=<your-tag>
 ### Code Generation
 
 Flagger uses Kubernetes code generation for its custom resources. After modifying CRDs, run:
+
 ```bash
 make codegen
 ```
 
 To verify code generation is up-to-date:
+
 ```bash
 make test-codegen
 ```
 
 ## Testing instructions
+
 - Find the CI plan in the .github/workflows folder
 - Run `make test` to execute all tests
 - Run `go test ./pkg/...` to run tests for all packages
@@ -75,7 +105,8 @@ make test-codegen
 
 ## E2E Testing with Istio
 
-Flagger includes comprehensive end-to-end tests for Istio integration. These tests validate various deployment strategies including canary releases, blue/green deployments, and A/B testing.
+Flagger includes comprehensive end-to-end tests for Istio integration. These tests validate various deployment
+strategies including canary releases, blue/green deployments, and A/B testing.
 
 ### Test Structure
 
@@ -99,6 +130,7 @@ To run the Istio E2E tests:
    ```
 
 This will:
+
 - Install Istio and Flagger
 - Initialize test workloads
 - Run canary deployment tests
@@ -113,11 +145,11 @@ The Istio E2E tests follow this workflow:
 2. Create test namespace with istio-injection enabled
 3. Deploy the load tester and podinfo test application
 4. Test various deployment scenarios:
-   - Canary deployments with traffic shifting
-   - Blue/Green deployments
-   - A/B testing with header-based routing
-   - Skip analysis deployments
-   - Virtual service delegation
+    - Canary deployments with traffic shifting
+    - Blue/Green deployments
+    - A/B testing with header-based routing
+    - Skip analysis deployments
+    - Virtual service delegation
 
 ### Key Test Components
 
@@ -128,11 +160,16 @@ The Istio E2E tests follow this workflow:
 
 ## Key Components
 
-1. **Core controller** - manages the deployment workflow in [pkg/controller/](file:///Users/hanyunpeng/Projects/flagger/pkg/controller)
-2. **Canary CRD** - defines how deployments should be handled in [artifacts/flagger/crd.yaml](file:///Users/hanyunpeng/Projects/flagger/artifacts/flagger/crd.yaml)
-3. **Router implementations** - for various service meshes and ingress controllers in [pkg/router/](file:///Users/hanyunpeng/Projects/flagger/pkg/router)
-4. **Metrics integration** - with Prometheus for analysis in [pkg/metrics/](file:///Users/hanyunpeng/Projects/flagger/pkg/metrics)
-5. **Notification system** - for Slack, MS Teams, etc. in [pkg/notifier/](file:///Users/hanyunpeng/Projects/flagger/pkg/notifier)
+1. **Core controller** - manages the deployment workflow
+   in [pkg/controller/](file:///Users/hanyunpeng/Projects/flagger/pkg/controller)
+2. **Canary CRD** - defines how deployments should be handled
+   in [artifacts/flagger/crd.yaml](file:///Users/hanyunpeng/Projects/flagger/artifacts/flagger/crd.yaml)
+3. **Router implementations** - for various service meshes and ingress controllers
+   in [pkg/router/](file:///Users/hanyunpeng/Projects/flagger/pkg/router)
+4. **Metrics integration** - with Prometheus for analysis
+   in [pkg/metrics/](file:///Users/hanyunpeng/Projects/flagger/pkg/metrics)
+5. **Notification system** - for Slack, MS Teams, etc.
+   in [pkg/notifier/](file:///Users/hanyunpeng/Projects/flagger/pkg/notifier)
 
 ## Development Workflow
 
@@ -145,6 +182,7 @@ The Istio E2E tests follow this workflow:
 7. Push and create a pull request
 
 ## PR instructions
+
 - Title format: [<component>] <Title> (e.g. [controller] Add manual step feature)
 - Always run `make fmt test-codegen` and `make test` before committing
 - Update documentation in README.md or /docs if needed
@@ -154,7 +192,10 @@ The Istio E2E tests follow this workflow:
 
 ## Key Development Areas
 
-1. **Adding support for new service meshes** - Implement new routers in [pkg/router/](file:///Users/hanyunpeng/Projects/flagger/pkg/router)
+1. **Adding support for new service meshes** - Implement new routers
+   in [pkg/router/](file:///Users/hanyunpeng/Projects/flagger/pkg/router)
 2. **Adding new metrics providers** - Extend the metrics functionality
-3. **Enhancing notification providers** - Add new notification channels in [pkg/notifier/](file:///Users/hanyunpeng/Projects/flagger/pkg/notifier)
-4. **Improving canary analysis** - Modify the analysis logic in [pkg/controller/](file:///Users/hanyunpeng/Projects/flagger/pkg/controller)
+3. **Enhancing notification providers** - Add new notification channels
+   in [pkg/notifier/](file:///Users/hanyunpeng/Projects/flagger/pkg/notifier)
+4. **Improving canary analysis** - Modify the analysis logic
+   in [pkg/controller/](file:///Users/hanyunpeng/Projects/flagger/pkg/controller)
