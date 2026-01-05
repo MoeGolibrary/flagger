@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/fluxcd/flagger/pkg/utils"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -185,6 +186,10 @@ func setStatusPhase(flaggerClient clientset.Interface, cd *flaggerv1.Canary, pha
 		// on promotion set primary spec hash
 		if phase == flaggerv1.CanaryPhaseInitialized || phase == flaggerv1.CanaryPhaseSucceeded {
 			cdCopy.Status.LastPromotedSpec = cd.Status.LastAppliedSpec
+		}
+		// set manual timestamp
+		if phase == flaggerv1.CanaryPhaseSucceeded || phase == flaggerv1.CanaryPhaseFailed {
+			cdCopy.Status.LastAppliedManualTimestamp = fmt.Sprintf("%d", time.Now().Unix())
 		}
 
 		if ok, conditions := MakeStatusConditions(cdCopy, phase); ok {
