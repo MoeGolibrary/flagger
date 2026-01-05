@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"strings"
+	"time"
 )
 
 func syncCanaryStatus(flaggerClient clientset.Interface, cd *flaggerv1.Canary,
@@ -186,6 +187,7 @@ func setStatusPhase(flaggerClient clientset.Interface, cd *flaggerv1.Canary, pha
 		}
 		// reset manual state
 		if phase == flaggerv1.CanaryPhaseSucceeded || phase == flaggerv1.CanaryPhaseFailed {
+			cdCopy.Status.LastAppliedManualTimestamp = fmt.Sprintf("%d", time.Now().Unix())
 			if cdCopy.Status.ManualState != nil {
 				cdCopy.Status.ManualState = &flaggerv1.CanaryManualState{}
 			}
