@@ -19,15 +19,13 @@ package canary
 import (
 	"context"
 	"fmt"
+	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
+	clientset "github.com/fluxcd/flagger/pkg/client/clientset/versioned"
 	"github.com/fluxcd/flagger/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"strings"
-	"time"
-
-	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
-	clientset "github.com/fluxcd/flagger/pkg/client/clientset/versioned"
 )
 
 func syncCanaryStatus(flaggerClient clientset.Interface, cd *flaggerv1.Canary,
@@ -189,11 +187,7 @@ func setStatusPhase(flaggerClient clientset.Interface, cd *flaggerv1.Canary, pha
 		// reset manual state
 		if phase == flaggerv1.CanaryPhaseSucceeded || phase == flaggerv1.CanaryPhaseFailed {
 			if cdCopy.Status.ManualState != nil {
-				var weight = 0
-				cdCopy.Status.LastAppliedManualTimestamp = fmt.Sprintf("%d", time.Now().Unix())
-				cdCopy.Status.ManualState.Paused = false
-				cdCopy.Status.ManualState.Weight = &weight
-				cdCopy.Status.ManualState.Timestamp = ""
+				cdCopy.Status.ManualState = &flaggerv1.CanaryManualState{}
 			}
 		}
 
