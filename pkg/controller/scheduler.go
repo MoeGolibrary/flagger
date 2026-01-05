@@ -1172,7 +1172,15 @@ func (c *Controller) rollback(canary *flaggerv1.Canary, canaryController canary.
 	}
 
 	// mark canary as failed
-	if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseFailed, CanaryWeight: 0}); err != nil {
+	canaryStatus := flaggerv1.CanaryStatus{
+		Phase:                      flaggerv1.CanaryPhaseFailed,
+		CanaryWeight:               0,
+		LastAppliedManualTimestamp: fmt.Sprintf("%d", time.Now().Unix()),
+	}
+	if canaryPhaseFailed.Status.ManualState != nil {
+		canaryStatus.ManualState = &flaggerv1.CanaryManualState{}
+	}
+	if err := canaryController.SyncStatus(canary, canaryStatus); err != nil {
 		c.logCanaryEvent(canary, fmt.Sprintf("Canary Failed. Scaled down %s.%s", canary.Spec.TargetRef.Name, canary.Namespace), zapcore.ErrorLevel)
 		return
 	} else {

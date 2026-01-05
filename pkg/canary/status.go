@@ -19,15 +19,14 @@ package canary
 import (
 	"context"
 	"fmt"
+	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
+	clientset "github.com/fluxcd/flagger/pkg/client/clientset/versioned"
 	"github.com/fluxcd/flagger/pkg/utils"
-	"strings"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
-
-	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
-	clientset "github.com/fluxcd/flagger/pkg/client/clientset/versioned"
+	"strings"
+	"time"
 )
 
 func syncCanaryStatus(flaggerClient clientset.Interface, cd *flaggerv1.Canary,
@@ -185,6 +184,13 @@ func setStatusPhase(flaggerClient clientset.Interface, cd *flaggerv1.Canary, pha
 		// on promotion set primary spec hash
 		if phase == flaggerv1.CanaryPhaseInitialized || phase == flaggerv1.CanaryPhaseSucceeded {
 			cdCopy.Status.LastPromotedSpec = cd.Status.LastAppliedSpec
+		}
+		// reset manual state
+		if phase == flaggerv1.CanaryPhaseSucceeded || phase == flaggerv1.CanaryPhaseFailed {
+			cdCopy.Status.LastAppliedManualTimestamp = fmt.Sprintf("%d", time.Now().Unix())
+			if cdCopy.Status.ManualState != nil {
+				cdCopy.Status.ManualState = &flaggerv1.CanaryManualState{}
+			}
 		}
 
 		if ok, conditions := MakeStatusConditions(cdCopy, phase); ok {
