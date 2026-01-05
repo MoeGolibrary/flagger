@@ -20,12 +20,11 @@ import (
 	"context"
 	"fmt"
 	"github.com/fluxcd/flagger/pkg/utils"
-	"strings"
-	"time"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
+	"strings"
+	"time"
 
 	flaggerv1 "github.com/fluxcd/flagger/pkg/apis/flagger/v1beta1"
 	clientset "github.com/fluxcd/flagger/pkg/client/clientset/versioned"
@@ -187,9 +186,15 @@ func setStatusPhase(flaggerClient clientset.Interface, cd *flaggerv1.Canary, pha
 		if phase == flaggerv1.CanaryPhaseInitialized || phase == flaggerv1.CanaryPhaseSucceeded {
 			cdCopy.Status.LastPromotedSpec = cd.Status.LastAppliedSpec
 		}
-		// set manual timestamp
+		// reset manual state
 		if phase == flaggerv1.CanaryPhaseSucceeded || phase == flaggerv1.CanaryPhaseFailed {
-			cdCopy.Status.LastAppliedManualTimestamp = fmt.Sprintf("%d", time.Now().Unix())
+			if cdCopy.Status.ManualState != nil {
+				var weight = 0
+				cdCopy.Status.LastAppliedManualTimestamp = fmt.Sprintf("%d", time.Now().Unix())
+				cdCopy.Status.ManualState.Paused = false
+				cdCopy.Status.ManualState.Weight = &weight
+				cdCopy.Status.ManualState.Timestamp = ""
+			}
 		}
 
 		if ok, conditions := MakeStatusConditions(cdCopy, phase); ok {
